@@ -16,6 +16,7 @@ use winit::{
     window::WindowBuilder,
 };
 
+
 pub struct Vkdevice {
     pub entry: Entry,
     pub device: Device,
@@ -97,5 +98,25 @@ impl Vkdevice {
                 })
                 .expect("Couldn't find suitable device.");
         }
+    }
+}
+pub struct Compute {
+    pub queue : vk::Queue,
+    pub cmd_pool : vk::CommandPool,
+    pub cmd_buffer : vk::CommandBuffer,
+    pub semaphore : vk::Semaphore,
+    pub desc_set_layout : vk::DescriptorSetLayout,
+    pub desc_set : vk::DescriptorSet,
+    pub pipeline_layout : vk::PipelineLayout,
+    pub pipeline : vk::Pipeline,
+}
+
+impl Compute {
+
+    pub fn buffer() {
+        let cmd_buf_info = vk::CommandBufferBeginInfo::default();
+
+
+
     }
 }
