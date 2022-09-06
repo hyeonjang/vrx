@@ -22,6 +22,15 @@ pub struct Vkdevice {
 }
 
 impl Vkdevice {
+    pub fn new() {
+        unsafe {
+            let ash_entry = ash::Entry::load().unwrap();
+            let ash_instance = Vkdevice::create_instance(&ash_entry);
+            let (vk_physical_device, vk_queue_family_index) = Vkdevice::create_physical_device(&ash_instance);
+            let vk_device = Vkdevice::create_device(&ash_instance, &vk_physical_device, vk_queue_family_index);
+        }
+    }
+    
     fn create_instance(entry:&ash::Entry) -> ash::Instance {
         unsafe {
         // 1. application initialize
@@ -33,10 +42,13 @@ impl Vkdevice {
         // 
         let extension_propertices = entry.enumerate_instance_extension_properties(None);
 
+        let extension_names = [];
+
         // 2. instance initialize 
         let instance_create_flag = vk::InstanceCreateFlags::default();
         let instance_create_info = vk::InstanceCreateInfo::builder()
-            .application_info(&app_info).flags(instance_create_flag).build();
+            .application_info(&app_info)
+            .flags(instance_create_flag).build();
 
         // 
         let instance = entry.create_instance(&instance_create_info, None).unwrap();
@@ -68,19 +80,31 @@ impl Vkdevice {
        }
     }
     
-    fn create_device(physical_device:&vk::PhysicalDevice) -> ash::Device {
+    fn create_device(instance:&ash::Instance, physical_device:&vk::PhysicalDevice, qfam_index:usize) -> ash::Device {
         unsafe {
-            let device_create_info = vk::DeviceCreateInfo::builder();
+            let priorities = [1.0];
+
+            let device_queue_info = vk::DeviceQueueCreateInfo::builder()
+                .queue_family_index(qfam_index as u32)
+                .queue_priorities(&priorities);
+
+            let device_extension_names = [ ash::extensions::khr::Swapchain::name().as_ptr() ,ash::vk::KhrPortabilityEnumerationFn::name().as_ptr() ];
+
+            let physical_device_features = vk::PhysicalDeviceFeatures::default();
+
+            let device_create_info = vk::DeviceCreateInfo::builder()
+                .queue_create_infos(std::slice::from_ref(&device_queue_info))
+                .enabled_extension_names(&device_extension_names)
+                .enabled_features(&physical_device_features);
+            
+            let device = instance
+                .create_device(*physical_device, &device_create_info, None).unwrap();
+            
+            device
         }
     } 
 
-    pub fn new() {
-        unsafe {
-            let ash_entry = ash::Entry::load().unwrap();
-            let ash_instance = Vkdevice::create_instance(&ash_entry);
-            let (vk_physical_device, vk_queue_family_index) = Vkdevice::create_physical_device(&ash_instance);
-        }
-    }
+
 }
 pub struct Compute {
     pub queue : vk::Queue,
