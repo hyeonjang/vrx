@@ -3,7 +3,7 @@ use vkdevice::*;
 
 fn main() {
     unsafe {
-        Vkdevice::new();
+        VkContext::new();
     };
 
     println!("Hello, world!");
