@@ -1,0 +1,18 @@
+{
+    // Debug configuration for rust
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name" : "(Linux) Launch",
+            "type" : "lldb",
+            "request": "launch",
+            "program" : "${workspaceFolder}/target/debug/vk-cholesky",
+            "args" : [],
+            "cwd" : "${workspaceFolder}",
+            "env" : {
+                "LD_LIBRARY_PATH":"${env:HOME}/vulkan/1.3.204.1/x86_64/lib",
+                "VK_LAYER_PATH":"${env:HOME}/vulkan/1.3.204.1/x86_64/etc/vulkan/explicit_layer.d"
+            }
+        }
+    ]
+}

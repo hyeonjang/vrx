@@ -1,0 +1,20 @@
+{
+    // Compile configuration for rust
+    "version": "0.2.0",
+    "options": {
+        "env": {
+            "CC" : "gcc",
+        }
+    },
+    "tasks": [
+        {
+            "label" : "(Linux) Build",
+            "args": [ "build" ],
+            "command" : "cargo",
+            "group" : "build",
+            "options" : {
+                "cwd" : "${workspaceFolder}",
+            }
+        }
+    ]
+}
