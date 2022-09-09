@@ -3,8 +3,13 @@ use vkdevice::*;
 
 fn main() {
     unsafe {
-        VkContext::new();
+        let vkcontext = VkContext::new();
+        let device = vkcontext.device();
+
+        let compute_pipeline = VkCompute::new(&device);
+
     };
+
 
     println!("Hello, world!");
 }

@@ -15,20 +15,37 @@ use winit::{
 };
 
 pub struct VkContext {
-    pub entry: ash::Entry,
-    pub device: ash::Device,
-    pub instance: ash::Instance,
+    entry: ash::Entry,
+    instance: ash::Instance,
+    physical_device: vk::PhysicalDevice,
+    queue_family_index: usize,
 }
 
 impl VkContext {
-    pub fn new() {
+    pub fn new() -> VkContext {
         unsafe {
             let ash_entry = ash::Entry::load().unwrap();
             let ash_instance = VkContext::create_instance(&ash_entry);
             let (vk_physical_device, vk_queue_family_index) =
                 VkContext::create_physical_device(&ash_instance);
-            let vk_device =
-                VkContext::create_device(&ash_instance, &vk_physical_device, vk_queue_family_index);
+            // let vk_device =
+            // VkContext::create_device(&ash_instance, &vk_physical_device, vk_queue_family_index);
+            VkContext {
+                entry: (ash_entry),
+                instance: (ash_instance),
+                physical_device: (vk_physical_device),
+                queue_family_index: (vk_queue_family_index),
+            }
+        }
+    }
+
+    pub fn device(&self) -> ash::Device {
+        unsafe {
+            VkContext::create_device(
+                &self.instance,
+                &self.physical_device,
+                self.queue_family_index,
+            )
         }
     }
 
@@ -128,7 +145,7 @@ impl VkContext {
         }
     }
 }
-pub struct Compute {
+pub struct VkCompute {
     pub queue: vk::Queue,
     pub cmd_pool: vk::CommandPool,
     pub cmd_buffer: vk::CommandBuffer,
@@ -139,8 +156,43 @@ pub struct Compute {
     pub pipeline: vk::Pipeline,
 }
 
-impl Compute {
-    pub fn buffer() {
-        let cmd_buf_info = vk::CommandBufferBeginInfo::default();
+impl VkCompute {
+    pub fn new(device:&ash::Device) {
+        unsafe {
+        // let vk_queue = // device.get_device_queue(queue_family_index, queue_index)
+
+        // device.create_descriptor_set_layout(create_info, allocation_callbacks)
+        let mut desc_set_layout_bindings;
+        {
+            let desc_set_layout_binding0 = vk::DescriptorSetLayoutBinding::builder()
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE)
+                .binding(0).build();
+
+            let desc_set_layout_binding1 = vk::DescriptorSetLayoutBinding::builder()
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE)
+                .binding(1).build();
+
+            desc_set_layout_bindings = [desc_set_layout_binding0, desc_set_layout_binding1];
+        };
+        let desc_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(&desc_set_layout_bindings);
+        let mut desc_set_layouts;
+        {
+            let desc_set_layout = device.create_descriptor_set_layout(&desc_set_layout_create_info, None).unwrap();
+            desc_set_layouts = [desc_set_layout];
+        }
+
+        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder().set_layouts(&desc_set_layouts);
+        let pipeline_layout = device.create_pipeline_layout(&pipeline_layout_create_info, None).unwrap();
+
+        let compute_pipeline_create_info = vk::ComputePipelineCreateInfo::builder().layout(pipeline_layout).build();
+        // device.create_compute_pipelines(pipeline_cache, create_infos, allocation_callbacks)
+        }
+    }
+
+    fn create_desc_set_layouts() {
+
     }
 }
