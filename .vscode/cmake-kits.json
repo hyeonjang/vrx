@@ -1,0 +1,15 @@
+[
+    {
+      "name": "conda gcc-9.4.0",
+      "compilers": {
+        "C": "/bin/gcc-10",
+        "CXX": "/bin/g++-10"
+      },
+      "environmentSetupScript": 
+        "/home/hyeonjang/miniconda3/etc/profile.d/conda.sh\" ; conda activate xr\"",
+      "environmentVariables": {
+        "VULKAN_SDK" : "/home/hyeonjang/vulkan/1.3.204.1/x86_64/",
+        "CUDACXX" : "/usr/local/cuda/bin/nvcc"
+      }
+    }
+]
