@@ -187,8 +187,23 @@ impl VkCompute {
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder().set_layouts(&desc_set_layouts);
         let pipeline_layout = device.create_pipeline_layout(&pipeline_layout_create_info, None).unwrap();
 
-        let compute_pipeline_create_info = vk::ComputePipelineCreateInfo::builder().layout(pipeline_layout).build();
-        // device.create_compute_pipelines(pipeline_cache, create_infos, allocation_callbacks)
+        let mut compute_pipeline_create_infos;
+        {
+            // let mut spv_file = Cursor::new(&);
+            // let code = ash::util::read_spv("./shader/cholesky.spv").unwrap();
+            // vk::ShaderModuleCreateInfo::builder().code(&code);
+            // let shader_module = device.create_shader_module(create_info, allocation_callbacks);
+
+            let compute_pipeline_create_info = vk::ComputePipelineCreateInfo::builder()
+                .layout(pipeline_layout).build();
+                // .stage(stage).build();
+            
+
+            compute_pipeline_create_infos = [compute_pipeline_create_info];
+        }
+        
+        let vk_pipeline_cache = vk::PipelineCache::default();
+        let compute_pipeline = device.create_compute_pipelines(vk_pipeline_cache, &compute_pipeline_create_infos, None);
         }
     }
 
