@@ -9,6 +9,6 @@ int main() {
 
     auto device = context.get_device();
 
-    vk_compute_pipeline_t compute_pipeline(device.get());
+    vk_compute_pipeline_t compute_pipeline(device);
     printf("end of program\n");
 }
