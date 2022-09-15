@@ -6,6 +6,7 @@
 
 #include "vulkan/vulkan.h"
 
+#include <iostream>
 #include <vector>
 
 #define GLFW_INCLUDE_VULKAN
@@ -105,47 +106,74 @@ struct vk_compute_pipeline_t {
     // vk_compute_pipeline_t(VkDevice device);
     vk_compute_pipeline_t(const VkDevice& device);
 
-    void create_shader_module();
+    VkShaderModule create_shader_module(const VkDevice& device);
 
     VkPipeline pipeline;
-    const VkDevice* p_device;
 };
+
+#ifdef __unix__
+    #include <unistd.h>
+    #define GETCWD(x, size) getcwd(x, size)
+#elif defined(_WIN32)
+    #include <direct.h>
+    #define GETCWD(x, size) _getcwd(x, size)
+#endif
 
 static size_t read_file_length(const char* filepath) {
 
-    return 0;
+    char cwd[1024];
+    GETCWD( cwd, sizeof( cwd ) );
+    
+    std::cout << __FILE__ << std::endl;
+
+    FILE* fp = fopen( filepath, "r" );
+    assert( fp!=NULL );
+
+
+
+    int seek_result = fseek( fp, 0, SEEK_END );
+    printf( "%d\n", seek_result );
+
+    size_t size = ftell(fp);
+    
+    fclose( fp );
+    return size;
 }
 
-static uint32_t* read_file(const char* filepath) {
+static uint32_t* read_file(const char* filepath, size_t size) {
 
-    uint32_t* buffer;
+    char* buffer = (char*) malloc(sizeof(char)*size);
     FILE* fp = fopen(filepath, "r");
 
-
+    fgets( buffer, sizeof( buffer ), fp );
 
     fclose(fp);
-
-    return buffer;
+    return reinterpret_cast<uint32_t*>(buffer);
 }
 
-void vk_compute_pipeline_t::create_shader_module() {
+VkShaderModule vk_compute_pipeline_t::create_shader_module(const VkDevice& device) {
 
-    VkShaderModuleCreateInfo info;
+    // call glslc compiler
+    char path[80];
+    sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
+
+    VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    info.codeSize = read_file_length("./src/shader/cholesky.spv");
-    info.pCode = read_file("./src/shader/cholesky");
+    info.codeSize = read_file_length(path);
+    info.pCode = read_file(path, info.codeSize);
 
     VkShaderModule shadermodule;
-    VkResult result = vkCreateShaderModule(*p_device, &info, nullptr, &shadermodule);
-    // return shadermodule;
+    VK_ASSERT(vkCreateShaderModule(device, &info, nullptr, &shadermodule));
+    
+    return shadermodule;
 }
 
 vk_compute_pipeline_t::vk_compute_pipeline_t(const VkDevice& device) {
         
-    VkPipelineShaderStageCreateInfo comp_shader_info;
+    VkPipelineShaderStageCreateInfo comp_shader_info{};
     comp_shader_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     comp_shader_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    // comp_shader_info.module = create_shader_module()
+    comp_shader_info.module = create_shader_module(device);
     comp_shader_info.pName = "main";
     
     VkPipelineLayout layout;
@@ -161,8 +189,8 @@ vk_compute_pipeline_t::vk_compute_pipeline_t(const VkDevice& device) {
     VkComputePipelineCreateInfo comp_pipeline_create_info{};
     comp_pipeline_create_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     comp_pipeline_create_info.stage = comp_shader_info;
-    comp_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
-    comp_pipeline_create_info.basePipelineIndex = -1;
+    // comp_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
+    // comp_pipeline_create_info.basePipelineIndex = -1;
 
     VK_ASSERT(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &comp_pipeline_create_info, nullptr, &pipeline));
 }
