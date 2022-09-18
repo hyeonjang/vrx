@@ -10,5 +10,5 @@ int main() {
     auto device = context.get_device();
 
     vk_pipeline_t compute_pipeline(&device);
-    printf("end of program\n");
+    // printf("end of program\n");
 }

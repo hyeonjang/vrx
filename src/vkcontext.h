@@ -11,7 +11,7 @@
 #include <iostream>
 #include <vector>
 
-#define VK_ASSERT(x) assert(x == VK_SUCCESS);
+#define VK_ASSERT(x) if(x != VK_SUCCESS) { printf("[vk-cholesky] vk runtime error %x\n", x); assert(x == VK_SUCCESS); }
 
 struct vkcontext_t {
     vkcontext_t();
@@ -177,8 +177,8 @@ VkShaderModule vk_pipeline_t::create_shader_module() {
 
     // const char* file = __FILE__;
     // const char* check = strstr(file, "/vkcontext.h");
-
-    // sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
+    char path[80];
+    sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
     // char* tocheck = "home,hyeonjang,vk,cholesky\0";
     // char *token, *string = "a string, of, ,tokens\0,after null terminator";
     // token = strtok(string, ",");
@@ -187,8 +187,7 @@ VkShaderModule vk_pipeline_t::create_shader_module() {
     //     printf("token: %s\n", token);
     // } while (token = strtok(NULL, "/"));
 
-    char path[80];
-    sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
+    //sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
 
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -204,52 +203,99 @@ VkShaderModule vk_pipeline_t::create_shader_module() {
 vk_pipeline_t::vk_pipeline_t(VkDevice* device)
 :p_device(device) {
 
+    struct specialization_t {
+        uint32_t BUFFER_ELEMENT_COUNT = 32;
+    } speicalization;
+
+    VkSpecializationMapEntry spec_map_entry;
+    spec_map_entry.constantID = 0;
+    spec_map_entry.offset = 0;
+    spec_map_entry.size = sizeof( uint32_t );
+
+    VkSpecializationInfo spec_info;
+    spec_info.mapEntryCount = 1;
+    spec_info.pMapEntries = &spec_map_entry;
+    spec_info.dataSize = sizeof(specialization_t);
+    spec_info.pData = (void*)(&speicalization);
+
     VkPipelineShaderStageCreateInfo comp_shader_info = {};
     comp_shader_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     comp_shader_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     comp_shader_info.module = create_shader_module();
-    // comp_shader_info.pSpecializationInfo
+    comp_shader_info.pSpecializationInfo = &spec_info;
     comp_shader_info.pName = "main";
     assert(comp_shader_info.module != VK_NULL_HANDLE);
 
     // desc pool
     VkDescriptorPool desc_pool;
-    VkDescriptorPoolSize* pool_size;
+    VkDescriptorPoolSize pool_size ={};
     VkDescriptorPoolCreateInfo desc_pool_create_info = {};
-    // desc_pool_create_info.poolSizeCount = ;
-    // desc_pool_create_info.pPoolSizes = pool_size;
+    desc_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    desc_pool_create_info.poolSizeCount = 1;
+    desc_pool_create_info.pPoolSizes = &pool_size;
+    desc_pool_create_info.maxSets = 1;
     VK_ASSERT(vkCreateDescriptorPool(*p_device, &desc_pool_create_info, nullptr, &desc_pool));
     
     // desc layout
+    VkDescriptorSet desc_set;
+    VkDescriptorSetLayout desc_set_layout;
+    VkDescriptorSetLayoutBinding desc_set_layout_binding = {};
+    desc_set_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    desc_set_layout_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    desc_set_layout_binding.descriptorCount = 0;
+
     VkDescriptorSetLayoutCreateInfo desc_set_layout_cinfo = {};
     desc_set_layout_cinfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    // desc_set_layout_cinfo.bindingCount;
-    // desc_set_layout_cinfo.pBindings =
-    VkDescriptorSetLayout desc_set_layout;
+    desc_set_layout_cinfo.bindingCount = 1;
+    desc_set_layout_cinfo.pBindings = &desc_set_layout_binding;
     VK_ASSERT(vkCreateDescriptorSetLayout(*p_device, &desc_set_layout_cinfo, nullptr, &desc_set_layout));
 
+    VkDescriptorSetAllocateInfo desc_set_alloc_info = {};
+    desc_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    desc_set_alloc_info.descriptorPool = desc_pool;
+    desc_set_alloc_info.descriptorSetCount = 1;
+    desc_set_alloc_info.pSetLayouts = &desc_set_layout;
+    VK_ASSERT(vkAllocateDescriptorSets(*p_device, &desc_set_alloc_info, &desc_set));
+
+    VkBuffer deviceBuffer;
+    {
+
+    }
+
+    VkDescriptorBufferInfo desc_buffer_info = {};
+    desc_buffer_info.buffer = deviceBuffer;
+    VkWriteDescriptorSet write_desc_set = {};
+    write_desc_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write_desc_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    write_desc_set.dstSet = desc_set;
+    write_desc_set.pBufferInfo = &desc_buffer_info;
+    vkUpdateDescriptorSets(*p_device, 1, &write_desc_set, 0, NULL);
+
+    printf( "descriptor done\n" );
+
     // pipeline layout
-    VkPipelineLayout layout;
-    VkPipelineLayoutCreateInfo layout_info {};
+    VkPipelineLayout pipeline_layout;
+    VkPipelineLayoutCreateInfo layout_info = {};
     layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layout_info.setLayoutCount = 1;
     layout_info.pSetLayouts = &desc_set_layout;
     layout_info.pushConstantRangeCount = 0;
     layout_info.pPushConstantRanges = nullptr;
-    VK_ASSERT(vkCreatePipelineLayout(*p_device, &layout_info, nullptr, &layout));
+    VK_ASSERT(vkCreatePipelineLayout(*p_device, &layout_info, nullptr, &pipeline_layout));
 
-    VkComputePipelineCreateInfo comp_pipeline_create_info{};
+    VkComputePipelineCreateInfo comp_pipeline_create_info = {};
     comp_pipeline_create_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     comp_pipeline_create_info.stage = comp_shader_info;
-    comp_pipeline_create_info.layout = layout;
+    comp_pipeline_create_info.layout = pipeline_layout;
     comp_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
     comp_pipeline_create_info.basePipelineIndex = 0;
 
-    VkPipelineCacheCreateInfo pipeline_cache_create_info{};
+    VkPipelineCacheCreateInfo pipeline_cache_create_info = {};
     pipeline_cache_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     VkPipelineCache pipeline_cache;
     vkCreatePipelineCache(*p_device, &pipeline_cache_create_info, nullptr, &pipeline_cache);
 
     printf("pipelinecreation\n");
-    VK_ASSERT(vkCreateComputePipelines(*p_device, pipeline_cache, 1, &comp_pipeline_create_info, nullptr, &pipeline));
+    VkPipeline compute_pipeline;
+    VK_ASSERT(vkCreateComputePipelines(*p_device, VK_NULL_HANDLE, 1, &comp_pipeline_create_info, nullptr, &compute_pipeline));
 }
