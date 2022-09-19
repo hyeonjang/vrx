@@ -6,6 +6,7 @@
 
 #include "vulkan/vulkan.h"
 #define VMA_IMPLEMENTATION
+#define VMA_VULKAN_VERSION 1002000
 #include "vk_mem_alloc.h"
 
 #include <iostream>
@@ -17,7 +18,6 @@ struct vkcontext_t {
     vkcontext_t();
     VkDevice get_device();
 
-private:
     void create_instance();
     void create_physical_device();
     void create_device();
@@ -36,7 +36,7 @@ vkcontext_t::vkcontext_t() {
     app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.pEngineName = "No Engine";
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.apiVersion = VK_API_VERSION_1_0;
+    app_info.apiVersion = VK_API_VERSION_1_2;
 
     // instance
     VkInstanceCreateInfo instance_create_info{};
@@ -76,17 +76,6 @@ vkcontext_t::vkcontext_t() {
     //queue_family_index = 0;
     printf( "queue family index: %d\n", queue_family_index );
 
-    // vma allocator
-    VmaAllocatorCreateInfo allocator_cinfo = {};
-    allocator_cinfo.instance = instance;
-    allocator_cinfo.physicalDevice = physical_device;
-    allocator_cinfo.device = device;
-    VK_ASSERT(vmaCreateAllocator(&allocator_cinfo, &allocator));
-}
-
-//std::unique_ptr<VkDevice> vkcontext_t::get_device() {
-VkDevice vkcontext_t::get_device() {
-
     float queue_priority = 1.0;
 
     VkDeviceQueueCreateInfo device_queue_create_info {};
@@ -106,13 +95,20 @@ VkDevice vkcontext_t::get_device() {
     device_create_info.enabledLayerCount = 0;
     device_create_info.enabledExtensionCount = 0;
 
-    //VkDevice* p_device = new VkDevice;
-    VkDevice device;
     VK_ASSERT(vkCreateDevice(physical_device, &device_create_info, nullptr, &device));
 
-    return device;
+    // vma allocator
+    VmaAllocatorCreateInfo allocator_cinfo = {};
+    allocator_cinfo.instance = instance;
+    allocator_cinfo.physicalDevice = physical_device;
+    allocator_cinfo.device = device;
+    VK_ASSERT(vmaCreateAllocator(&allocator_cinfo, &allocator));
 }
 
+//std::unique_ptr<VkDevice> vkcontext_t::get_device() {
+VkDevice vkcontext_t::get_device() {
+    return device;
+}
 
 
 #ifdef __unix__
@@ -154,7 +150,7 @@ static uint32_t* read_file(const char* filepath, size_t size) {
 
 struct vk_pipeline_t {
 
-    vk_pipeline_t(VkDevice* p_device);
+    vk_pipeline_t(VkDevice* p_device, VmaAllocator* allocator);
 
 // func
     // shaders
@@ -166,7 +162,8 @@ struct vk_pipeline_t {
 
 // member
     VkPipeline pipeline;
-    const VkDevice* p_device;
+    const VkDevice*         p_device;
+    const VmaAllocator*     p_allocator;
 };
 
 VkShaderModule vk_pipeline_t::create_shader_module() {
@@ -200,8 +197,8 @@ VkShaderModule vk_pipeline_t::create_shader_module() {
     return shadermodule;
 }
 
-vk_pipeline_t::vk_pipeline_t(VkDevice* device)
-:p_device(device) {
+vk_pipeline_t::vk_pipeline_t(VkDevice* device, VmaAllocator* allocator)
+:p_device(device), p_allocator(allocator) {
 
     struct specialization_t {
         uint32_t BUFFER_ELEMENT_COUNT = 32;
@@ -257,13 +254,20 @@ vk_pipeline_t::vk_pipeline_t(VkDevice* device)
     desc_set_alloc_info.pSetLayouts = &desc_set_layout;
     VK_ASSERT(vkAllocateDescriptorSets(*p_device, &desc_set_alloc_info, &desc_set));
 
-    VkBuffer deviceBuffer;
-    {
-
-    }
+    VkBufferCreateInfo buffer_info = {};
+    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size = 65536;
+    buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    
+    VmaAllocationCreateInfo alloc_info = {};
+    alloc_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+    
+    VkBuffer buffer;
+    VmaAllocation allocation = VK_NULL_HANDLE;
+    vmaCreateBuffer( *p_allocator, &buffer_info, &alloc_info, &buffer, &allocation, nullptr );
 
     VkDescriptorBufferInfo desc_buffer_info = {};
-    desc_buffer_info.buffer = deviceBuffer;
+    desc_buffer_info.buffer = buffer;
     VkWriteDescriptorSet write_desc_set = {};
     write_desc_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write_desc_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;

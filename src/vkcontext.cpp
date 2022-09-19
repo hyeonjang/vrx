@@ -7,8 +7,6 @@ int main() {
     vkcontext_t context;
     printf("call started\n");
 
-    auto device = context.get_device();
-
-    vk_pipeline_t compute_pipeline(&device);
+    vk_pipeline_t compute_pipeline(&context.device, &context.allocator);
     // printf("end of program\n");
 }
