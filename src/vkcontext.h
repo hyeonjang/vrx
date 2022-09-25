@@ -62,6 +62,8 @@ vkcontext_t::vkcontext_t() {
     // instance_create_info.ppEnabledExtensionNames = glfwExtensions;
     VK_ASSERT(vkCreateInstance(&instance_create_info, nullptr, &instance));
 
+    // debugger
+
     // physcial device
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
@@ -159,6 +161,24 @@ static uint32_t* read_file(const char* filepath, size_t size) {
     return reinterpret_cast<uint32_t*>(buffer);
 }
 
+#include <fstream>
+static std::vector<char> readFile( const std::string& filename ) {
+    std::ifstream file( filename, std::ios::ate | std::ios::binary );
+
+    if( !file.is_open() ) {
+        throw std::runtime_error( "failed to open file!" );
+    }
+
+    size_t fileSize = (size_t) file.tellg();
+    std::vector<char> buffer(fileSize);
+
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+    file.close();
+
+    return buffer;
+}
+
 struct vk_pipeline_t {
 
     vk_pipeline_t(VkDevice* p_device, VmaAllocator* allocator);
@@ -196,11 +216,13 @@ VkShaderModule vk_pipeline_t::create_shader_module() {
     // } while (token = strtok(NULL, "/"));
 
     //sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
-
+    auto code = readFile( path );
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    info.codeSize = read_file_length(path);
-    info.pCode = read_file(path, info.codeSize);
+    // info.codeSize = read_file_length(path);
+    // info.pCode = read_file(path, info.codeSize);
+    info.codeSize = code.size();
+    info.pCode = reinterpret_cast<uint32_t*>(code.data());
 
     VkShaderModule shadermodule;
     VK_ASSERT(vkCreateShaderModule(*p_device, &info, nullptr, &shadermodule));
@@ -237,6 +259,9 @@ vk_pipeline_t::vk_pipeline_t(VkDevice* device, VmaAllocator* allocator)
     // desc pool
     VkDescriptorPool desc_pool;
     VkDescriptorPoolSize pool_size ={};
+    pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    pool_size.descriptorCount = 1;
+
     VkDescriptorPoolCreateInfo desc_pool_create_info = {};
     desc_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     desc_pool_create_info.poolSizeCount = 1;
@@ -250,7 +275,8 @@ vk_pipeline_t::vk_pipeline_t(VkDevice* device, VmaAllocator* allocator)
     VkDescriptorSetLayoutBinding desc_set_layout_binding = {};
     desc_set_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     desc_set_layout_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    desc_set_layout_binding.descriptorCount = 0;
+    desc_set_layout_binding.binding = 0;
+    desc_set_layout_binding.descriptorCount = 1;
 
     VkDescriptorSetLayoutCreateInfo desc_set_layout_cinfo = {};
     desc_set_layout_cinfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -258,37 +284,7 @@ vk_pipeline_t::vk_pipeline_t(VkDevice* device, VmaAllocator* allocator)
     desc_set_layout_cinfo.pBindings = &desc_set_layout_binding;
     VK_ASSERT(vkCreateDescriptorSetLayout(*p_device, &desc_set_layout_cinfo, nullptr, &desc_set_layout));
 
-    VkDescriptorSetAllocateInfo desc_set_alloc_info = {};
-    desc_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    desc_set_alloc_info.descriptorPool = desc_pool;
-    desc_set_alloc_info.descriptorSetCount = 1;
-    desc_set_alloc_info.pSetLayouts = &desc_set_layout;
-    VK_ASSERT(vkAllocateDescriptorSets(*p_device, &desc_set_alloc_info, &desc_set));
-
-    VkBufferCreateInfo buffer_info = {};
-    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    buffer_info.size = 65536;
-    buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    
-    VmaAllocationCreateInfo alloc_info = {};
-    alloc_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-    
-    VkBuffer buffer;
-    VmaAllocation allocation = VK_NULL_HANDLE;
-    vmaCreateBuffer( *p_allocator, &buffer_info, &alloc_info, &buffer, &allocation, nullptr );
-
-    VkDescriptorBufferInfo desc_buffer_info = {};
-    desc_buffer_info.buffer = buffer;
-    VkWriteDescriptorSet write_desc_set = {};
-    write_desc_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write_desc_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    write_desc_set.dstSet = desc_set;
-    write_desc_set.pBufferInfo = &desc_buffer_info;
-    vkUpdateDescriptorSets(*p_device, 1, &write_desc_set, 0, NULL);
-
-    printf( "descriptor done\n" );
-
-    // pipeline layout
+        // pipeline layout
     VkPipelineLayout pipeline_layout;
     VkPipelineLayoutCreateInfo layout_info = {};
     layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -297,6 +293,42 @@ vk_pipeline_t::vk_pipeline_t(VkDevice* device, VmaAllocator* allocator)
     layout_info.pushConstantRangeCount = 0;
     layout_info.pPushConstantRanges = nullptr;
     VK_ASSERT(vkCreatePipelineLayout(*p_device, &layout_info, nullptr, &pipeline_layout));
+
+    VkDescriptorSetAllocateInfo desc_set_alloc_info = {};
+    desc_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    desc_set_alloc_info.descriptorPool = desc_pool;
+    desc_set_alloc_info.pSetLayouts = &desc_set_layout;
+    desc_set_alloc_info.descriptorSetCount = 1;
+    VK_ASSERT(vkAllocateDescriptorSets(*p_device, &desc_set_alloc_info, &desc_set));
+
+    VkBufferCreateInfo buffer_info = {};
+    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size = 65536;
+    buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    
+    VmaAllocationCreateInfo alloc_info = {};
+    alloc_info.usage = VMA_MEMORY_USAGE_UNKNOWN;
+    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VK_ASSERT(vmaCreateBuffer( *p_allocator, &buffer_info, &alloc_info, &buffer, &allocation, nullptr ));
+
+    VkDescriptorBufferInfo desc_buffer_info = {};
+    desc_buffer_info.buffer = buffer;
+    desc_buffer_info.offset = 0;
+    desc_buffer_info.range = VK_WHOLE_SIZE;
+    VkWriteDescriptorSet write_desc_set = {};
+    write_desc_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write_desc_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    write_desc_set.dstSet = desc_set;
+    write_desc_set.pBufferInfo = &desc_buffer_info;
+    write_desc_set.pImageInfo = nullptr;
+    write_desc_set.descriptorCount = 1;
+    write_desc_set.dstBinding = 0;
+    vkUpdateDescriptorSets(*p_device, 1, &write_desc_set, 0, NULL);
+
+    printf( "descriptor done\n" );
+
 
     VkComputePipelineCreateInfo comp_pipeline_create_info = {};
     comp_pipeline_create_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
