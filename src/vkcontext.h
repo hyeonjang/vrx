@@ -30,7 +30,7 @@ struct vkcontext_t {
 };
 
 vkcontext_t::vkcontext_t() {
-    VkApplicationInfo app_info;
+    VkApplicationInfo app_info ={};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "vk-cholesky";
     app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -38,11 +38,22 @@ vkcontext_t::vkcontext_t() {
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.apiVersion = VK_API_VERSION_1_2;
 
+    const char* layers[] ={
+        "VK_LAYER_KHRONOS_validation"
+    };
+
+    const char* extensions[] ={
+        "VK_EXT_debug_report"
+    };
+
     // instance
     VkInstanceCreateInfo instance_create_info{};
     instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instance_create_info.pApplicationInfo = &app_info;
-    
+    instance_create_info.enabledLayerCount = 1;
+    instance_create_info.ppEnabledLayerNames = layers;
+    instance_create_info.enabledExtensionCount = 1;
+    instance_create_info.ppEnabledExtensionNames = extensions;
     // uint32_t glfwExtensionCount = 0;
     // const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     // instance_create_info.enabledLayerCount = 0;
