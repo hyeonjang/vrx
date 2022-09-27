@@ -25,7 +25,9 @@ struct vkcontext_t {
     VkInstance instance; // VK_NULL_HANDLE
     VkPhysicalDevice physical_device;
     uint32_t queue_family_index;
+    
     VkDevice device;
+    VkCommandPool cmd_pool;
     VmaAllocator allocator;
 };
 
@@ -100,6 +102,9 @@ vkcontext_t::vkcontext_t() {
 
     VkPhysicalDeviceFeatures device_features{};
 
+    //
+    // vkdevice
+    //
     VkDeviceCreateInfo device_create_info {};
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_create_info.queueCreateInfoCount = 1;
@@ -107,8 +112,16 @@ vkcontext_t::vkcontext_t() {
     device_create_info.pEnabledFeatures = &device_features;
     device_create_info.enabledLayerCount = 0;
     device_create_info.enabledExtensionCount = 0;
-
     VK_ASSERT(vkCreateDevice(physical_device, &device_create_info, nullptr, &device));
+
+    //
+    // vk command pool
+    //
+    VkCommandPoolCreateInfo cmd_pool_create_info ={};
+    cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    cmd_pool_create_info.queueFamilyIndex = queue_family_index;
+    cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    VK_ASSERT(vkCreateCommandPool(device, &cmd_pool_create_info, nullptr, &cmd_pool));
 
     // vma allocator
     VmaAllocatorCreateInfo allocator_cinfo = {};
@@ -181,7 +194,7 @@ static std::vector<char> readFile( const std::string& filename ) {
 
 struct vk_pipeline_t {
 
-    vk_pipeline_t(VkDevice* p_device, VmaAllocator* allocator);
+    vk_pipeline_t( vkcontext_t* p_ctx );
 
 // func
     // shaders
@@ -193,8 +206,7 @@ struct vk_pipeline_t {
 
 // member
     VkPipeline pipeline;
-    const VkDevice*         p_device;
-    const VmaAllocator*     p_allocator;
+    const vkcontext_t* p_context;
 };
 
 VkShaderModule vk_pipeline_t::create_shader_module() {
@@ -225,13 +237,16 @@ VkShaderModule vk_pipeline_t::create_shader_module() {
     info.pCode = reinterpret_cast<uint32_t*>(code.data());
 
     VkShaderModule shadermodule;
-    VK_ASSERT(vkCreateShaderModule(*p_device, &info, nullptr, &shadermodule));
+    VK_ASSERT(vkCreateShaderModule(p_context->device, &info, nullptr, &shadermodule));
     
     return shadermodule;
 }
 
-vk_pipeline_t::vk_pipeline_t(VkDevice* device, VmaAllocator* allocator)
-:p_device(device), p_allocator(allocator) {
+vk_pipeline_t::vk_pipeline_t(vkcontext_t* ctx)
+:p_context(ctx) {
+
+    const VkDevice* p_device = &(p_context->device);
+    const VmaAllocator* p_allocator = &(p_context->allocator);
 
     struct specialization_t {
         uint32_t BUFFER_ELEMENT_COUNT = 32;
@@ -301,6 +316,9 @@ vk_pipeline_t::vk_pipeline_t(VkDevice* device, VmaAllocator* allocator)
     desc_set_alloc_info.descriptorSetCount = 1;
     VK_ASSERT(vkAllocateDescriptorSets(*p_device, &desc_set_alloc_info, &desc_set));
 
+    //
+    // buffers
+    //
     VkBufferCreateInfo buffer_info = {};
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buffer_info.size = 65536;
@@ -312,6 +330,26 @@ vk_pipeline_t::vk_pipeline_t(VkDevice* device, VmaAllocator* allocator)
     VkBuffer buffer;
     VmaAllocation allocation;
     VK_ASSERT(vmaCreateBuffer( *p_allocator, &buffer_info, &alloc_info, &buffer, &allocation, nullptr ));
+
+
+    //
+    // command buffers
+    //
+    VkCommandBufferAllocateInfo cmd_buf_alloc_info = {};
+    cmd_buf_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmd_buf_alloc_info.commandPool = p_context->cmd_pool;
+    cmd_buf_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cmd_buf_alloc_info.commandBufferCount = 1;
+
+    VkCommandBuffer cmd_buf;
+    VK_ASSERT(vkAllocateCommandBuffers(p_context->device, &cmd_buf_alloc_info, &cmd_buf));
+
+    VkCommandBufferBeginInfo cmd_buf_begin_info = {};
+    cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    VK_ASSERT(vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info));
+
+
+
 
     VkDescriptorBufferInfo desc_buffer_info = {};
     desc_buffer_info.buffer = buffer;
