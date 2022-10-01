@@ -14,6 +14,8 @@
 
 #define VK_ASSERT(x) if(x != VK_SUCCESS) { printf("[vk-cholesky] vk runtime error %x\n", x); assert(x == VK_SUCCESS); }
 
+struct Device;
+
 struct vkcontext_t {
     vkcontext_t();
     VkDevice get_device();
@@ -242,6 +244,47 @@ VkShaderModule vk_pipeline_t::create_shader_module() {
     return shadermodule;
 }
 
+struct Buffer {
+
+    VmaAllocation allocation;
+    VkBuffer buffer;
+};
+
+struct Device {
+
+    VkDevice device;
+    VmaAllocator allocator;
+
+    Buffer create_buffer(VkBufferCreateInfo buf, VmaAllocationCreateInfo alloc);
+};
+
+Buffer Device::create_buffer( VkBufferCreateInfo buf_info, VmaAllocationCreateInfo alloc_info ) {
+
+    Buffer buf;
+    vmaCreateBuffer( allocator, &buf_info, &alloc_info, &buf.buffer, &buf.allocation, nullptr );
+
+    return buf;
+}
+
+
+VkBuffer create_buffer() {
+    VkBufferCreateInfo buffer_info = {};
+    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size = 65536;
+    buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    
+    VmaAllocationCreateInfo alloc_info = {};
+    alloc_info.usage = VMA_MEMORY_USAGE_UNKNOWN;
+    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VK_ASSERT(vmaCreateBuffer( *p_allocator, &buffer_info, &alloc_info, &buffer, &allocation, nullptr ));
+
+
+    return buffer;
+}
+
 vk_pipeline_t::vk_pipeline_t(vkcontext_t* ctx)
 :p_context(ctx) {
 
@@ -327,6 +370,7 @@ vk_pipeline_t::vk_pipeline_t(vkcontext_t* ctx)
     VmaAllocationCreateInfo alloc_info = {};
     alloc_info.usage = VMA_MEMORY_USAGE_UNKNOWN;
     alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
     VkBuffer buffer;
     VmaAllocation allocation;
     VK_ASSERT(vmaCreateBuffer( *p_allocator, &buffer_info, &alloc_info, &buffer, &allocation, nullptr ));
@@ -348,7 +392,7 @@ vk_pipeline_t::vk_pipeline_t(vkcontext_t* ctx)
     cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     VK_ASSERT(vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info));
 
-
+    VkBufferCopy copyRegion ={};
 
 
     VkDescriptorBufferInfo desc_buffer_info = {};
