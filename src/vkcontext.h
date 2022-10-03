@@ -34,11 +34,13 @@ namespace vx {
 // call function dependency
 // 
 struct Buffer {
-    VkBuffer      self;
-    VmaAllocation allocation;
-    VmaAllocationInfo info;
+    VkBuffer            self;
+    VmaAllocation       allocation;
+    VmaAllocationInfo   info;
 
-    void memcpy(void* data, size_t size) {
+    void copy(void* data, size_t size) {
+
+        assert( data!=nullptr );
 
         // default
         memcpy(info.pMappedData, data, size);
@@ -60,7 +62,7 @@ struct CommandBuffer {
     }
 
     inline void copyBuffer(VkBuffer src, VkBuffer dst, VkBufferCopy copy) {
-        vkCmdCopyBuffer(self, src, dst, 1, copy);
+        vkCmdCopyBuffer(self, src, dst, 1, &copy);
     };
 };
 
@@ -69,12 +71,13 @@ struct Device {
     VkDevice        self;
     VkCommandPool   commandPool;
     VmaAllocator    allocator;
+    VkQueue         queue;
 
     inline Buffer createBuffer(VkBufferCreateInfo buf_info, VmaAllocationCreateInfo alloc_info) const {
         Buffer buf;
         
         //@@ error checking
-        VK_ASSERT(vmaCreateBuffer( allocator, &buf_info, &alloc_info, &buf.self, &buf.allocation, nullptr ));
+        VK_ASSERT(vmaCreateBuffer( allocator, &buf_info, &alloc_info, &buf.self, &buf.allocation, &buf.info ));
         
         return buf;
     };
@@ -92,6 +95,10 @@ struct Device {
         VK_ASSERT(vkAllocateCommandBuffers(self, &info, &cmdBuffer.self));
 
         return cmdBuffer;
+    }
+
+    inline void freeCommandBuffers(const VkCommandBuffer* cmd, size_t size) const {
+        vkFreeCommandBuffers(self, commandPool, size, cmd);
     }
 };
 
@@ -194,6 +201,11 @@ void vkcontext_t::initVxdevice() {
     VK_ASSERT(vkCreateDevice(physical_device, &device_create_info, nullptr, &device.self));
 
     //
+    // get queues
+    //
+    vkGetDeviceQueue( device.self, queue_family_index, 0, &device.queue );
+
+    //
     // vk command pool
     //
     VkCommandPoolCreateInfo cmd_pool_create_info ={};
@@ -276,7 +288,7 @@ VkShaderModule Pipeline::create_shader_module() {
     // const char* file = __FILE__;
     // const char* check = strstr(file, "/vkcontext.h");
     char path[80];
-    // sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
+    sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
     // char* tocheck = "home,hyeonjang,vk,cholesky\0";
     // char *token, *string = "a string, of, ,tokens\0,after null terminator";
     // token = strtok(string, ",");
@@ -285,7 +297,7 @@ VkShaderModule Pipeline::create_shader_module() {
     //     printf("token: %s\n", token);
     // } while (token = strtok(NULL, "/"));
 
-    sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
+    // sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
     auto code = readFile( path );
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -377,31 +389,39 @@ Pipeline::Pipeline(const Device* device)
     VkBufferCreateInfo buffer_info = {};
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buffer_info.size = 65536;
-    buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     
     VmaAllocationCreateInfo alloc_info = {};
-    alloc_info.usage = VMA_MEMORY_USAGE_UNKNOWN;
+    alloc_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
     alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
     Buffer buffer = p_device->createBuffer(buffer_info, alloc_info);
+
+    size_t size = 32;
+    std::vector<uint32_t> computeInput(size);
+    std::vector<uint32_t> computeOutput(size);
+    uint32_t n = 0;
+    std::generate( computeInput.begin(), computeInput.end(), [&n]{ return n++;  } );
+    buffer.copy((void*)&computeInput[0], sizeof(uint32_t)*size);
+
+    std::cout << computeInput[3] << std::endl;
 
     //
     // command buffers
     //
-    // VkCommandBufferAllocateInfo cmd_buf_alloc_info = {};
-    // cmd_buf_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    // cmd_buf_alloc_info.commandPool = p_device->commandPool;
-    // cmd_buf_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    // cmd_buf_alloc_info.commandBufferCount = 1;
-
-    // VkCommandBuffer cmd_buf;
-    // VK_ASSERT(vkAllocateCommandBuffers(p_device->self, &cmd_buf_alloc_info, &cmd_buf));
     CommandBuffer cmdBuffer = p_device->allocateCommandBuffer();
     cmdBuffer.begin();
-    VkBufferCopy copy ={
-
-    };
-    cmdBuffer.copyBuffer(&copy);
     cmdBuffer.end();
+
+    VkFence fence;
+    VkFenceCreateInfo fenceInfo ={};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    // fenceInfo.flags = VK_FLAGS_NONE;
+    VK_ASSERT(vkCreateFence(p_device->self, &fenceInfo, nullptr, &fence));
+
+    VkSubmitInfo submitInfo ={};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    p_device->freeCommandBuffers(&cmdBuffer.self, 1);
 
     VkDescriptorBufferInfo desc_buffer_info = {};
     desc_buffer_info.buffer = buffer.self;
