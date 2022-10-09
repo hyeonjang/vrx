@@ -389,7 +389,7 @@ Pipeline::Pipeline(const Device* device)
     VkBufferCreateInfo buffer_info = {};
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buffer_info.size = 65536;
-    buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     
     VmaAllocationCreateInfo alloc_info = {};
     alloc_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
