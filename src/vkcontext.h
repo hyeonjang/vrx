@@ -64,6 +64,22 @@ struct CommandBuffer {
     inline void copyBuffer(VkBuffer src, VkBuffer dst, VkBufferCopy copy) {
         vkCmdCopyBuffer(self, src, dst, 1, &copy);
     };
+
+    inline void bindPipeline() {
+        // vkCmdBindPipeline(self, );
+    }
+
+    inline void bindDescriptorSets() {
+
+    }
+
+    inline void dispatch() {
+
+    }
+
+    inline void pipelineBarrirer() {
+        
+    }
 };
 
 struct Device {
@@ -99,6 +115,10 @@ struct Device {
 
     inline void freeCommandBuffers(const VkCommandBuffer* cmd, size_t size) const {
         vkFreeCommandBuffers(self, commandPool, size, cmd);
+    }
+
+    inline void queueSubmit(VkSubmitInfo submitInfo, const VkFence& fence) const {
+        VK_ASSERT(vkQueueSubmit(queue, 1, &submitInfo, fence));
     }
 };
 
@@ -288,7 +308,7 @@ VkShaderModule Pipeline::create_shader_module() {
     // const char* file = __FILE__;
     // const char* check = strstr(file, "/vkcontext.h");
     char path[80];
-    sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
+    // sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
     // char* tocheck = "home,hyeonjang,vk,cholesky\0";
     // char *token, *string = "a string, of, ,tokens\0,after null terminator";
     // token = strtok(string, ",");
@@ -297,7 +317,7 @@ VkShaderModule Pipeline::create_shader_module() {
     //     printf("token: %s\n", token);
     // } while (token = strtok(NULL, "/"));
 
-    // sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
+    sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
     auto code = readFile( path );
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -420,7 +440,10 @@ Pipeline::Pipeline(const Device* device)
 
     VkSubmitInfo submitInfo ={};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    p_device->queueSubmit(submitInfo, fence);
+    vkWaitForFences(p_device->self, 1, &fence, VK_TRUE, UINT64_MAX);
 
+    vkDestroyFence(p_device->self, fence, nullptr);
     p_device->freeCommandBuffers(&cmdBuffer.self, 1);
 
     VkDescriptorBufferInfo desc_buffer_info = {};
@@ -455,5 +478,13 @@ Pipeline::Pipeline(const Device* device)
     printf("pipelinecreation\n");
     VkPipeline compute_pipeline;
     VK_ASSERT(vkCreateComputePipelines(p_device->self, VK_NULL_HANDLE, 1, &comp_pipeline_create_info, nullptr, &compute_pipeline));
+
+
+    //@@ add command buffer submit for ss
+
+    //
+    cmdBuffer->begin();
+
+    cmdBuffer->end();
 }
 }
