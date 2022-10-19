@@ -65,8 +65,8 @@ struct CommandBuffer {
         vkCmdCopyBuffer(self, src, dst, 1, &copy);
     };
 
-    inline void bindPipeline() {
-        // vkCmdBindPipeline(self, );
+    inline void bindPipeline(VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline) {
+        vkCmdBindPipeline(self, pipelineBindPoint, pipeline);
     }
 
     inline void bindDescriptorSets() {
@@ -77,8 +77,36 @@ struct CommandBuffer {
 
     }
 
-    inline void pipelineBarrirer() {
-        
+    inline void pipelineBarrier(
+        VkPipelineStageFlags            flag0, 
+        VkPipelineStageFlags            flag1, 
+        VkDependencyFlags               dependencyFlag, 
+        uint32_t                        nMemomryBarrier, 
+        const VkMemoryBarrier*          pMemomryBarrier,
+        uint32_t                        nBufferMemomryBarrier, 
+        const VkBufferMemoryBarrier*    pBufferMemomryBarrier,
+        uint32_t                        nImageMemoryBarrier,
+        const VkImageMemoryBarrier*     pImageMemoryBarrier) {
+        vkCmdPipelineBarrier(
+            self, flag0, flag1, dependencyFlag, 
+            nMemomryBarrier, pMemomryBarrier, 
+            nBufferMemomryBarrier, pBufferMemomryBarrier, 
+            nImageMemoryBarrier, pImageMemoryBarrier
+        );
+    }
+    
+    inline void pipelineBarrier(
+        VkPipelineStageFlags            flag0, 
+        VkPipelineStageFlags            flag1, 
+        VkDependencyFlags               dependencyFlag, 
+        uint32_t                        nBufferMemomryBarrier, 
+        const VkBufferMemoryBarrier*    pBufferMemomryBarrier) {
+        vkCmdPipelineBarrier(
+            self, flag0, flag1, dependencyFlag, 
+            0, nullptr, 
+            nBufferMemomryBarrier, pBufferMemomryBarrier, 
+            0, nullptr
+        );
     }
 };
 
@@ -308,7 +336,7 @@ VkShaderModule Pipeline::create_shader_module() {
     // const char* file = __FILE__;
     // const char* check = strstr(file, "/vkcontext.h");
     char path[80];
-    // sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
+    sprintf( path, "%s/../shader/cholesky.spv", __FILE__ );
     // char* tocheck = "home,hyeonjang,vk,cholesky\0";
     // char *token, *string = "a string, of, ,tokens\0,after null terminator";
     // token = strtok(string, ",");
@@ -317,7 +345,7 @@ VkShaderModule Pipeline::create_shader_module() {
     //     printf("token: %s\n", token);
     // } while (token = strtok(NULL, "/"));
 
-    sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
+    //sprintf( path, "/home/hyeonjang/vk-cholesky/src/shader/cholesky.spv", __FILE__ );
     auto code = readFile( path );
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -483,8 +511,30 @@ Pipeline::Pipeline(const Device* device)
     //@@ add command buffer submit for ss
 
     //
-    cmdBuffer->begin();
+    CommandBuffer commandBuffer = p_device->allocateCommandBuffer();
+    VkFenceCreateInfo fenceCreateInfo = {};
+    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    VK_ASSERT(vkCreateFence(p_device->self, &fenceCreateInfo, nullptr, &fence));
 
-    cmdBuffer->end();
+    commandBuffer.begin();
+    VkBufferMemoryBarrier bufferBarrier = {};
+    bufferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    bufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    bufferBarrier.buffer = buffer.self;
+    bufferBarrier.size = VK_WHOLE_SIZE;
+    bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+    commandBuffer.pipelineBarrier(
+        VK_PIPELINE_STAGE_HOST_BIT, 
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+        0, 1, &bufferBarrier
+        );
+
+
+    commandBuffer.bindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline);
+    commandBuffer.end();
 }
 }
