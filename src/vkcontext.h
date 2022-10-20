@@ -69,12 +69,25 @@ struct CommandBuffer {
         vkCmdBindPipeline(self, pipelineBindPoint, pipeline);
     }
 
-    inline void bindDescriptorSets() {
-
+    inline void bindDescriptorSets(
+        VkPipelineBindPoint     pipelineBindPoint,
+        VkPipelineLayout        pipelineLayout,
+        uint32_t                firstSet,
+        uint32_t                descriptorSetCount,
+        const VkDescriptorSet*  pDescriptorSet,
+        uint32_t                dynamicOffsetCount,
+        const uint32_t*         pDynamicOffsets
+        ) {
+        vkCmdBindDescriptorSets(
+            self, pipelineBindPoint, 
+            pipelineLayout, firstSet, 
+            descriptorSetCount, pDescriptorSet, 
+            dynamicOffsetCount, pDynamicOffsets
+        );
     }
 
-    inline void dispatch() {
-
+    inline void dispatch(uint32_t countX, uint32_t countY, uint32_t countZ) {
+        vkCmdDispatch( self, countX, countY, countZ );
     }
 
     inline void pipelineBarrier(
@@ -400,8 +413,8 @@ Pipeline::Pipeline(const Device* device)
     VK_ASSERT(vkCreateDescriptorPool(p_device->self, &desc_pool_create_info, nullptr, &desc_pool));
     
     // desc layout
-    VkDescriptorSet desc_set;
-    VkDescriptorSetLayout desc_set_layout;
+    VkDescriptorSet descSet;
+    VkDescriptorSetLayout descSetLayout;
     VkDescriptorSetLayoutBinding desc_set_layout_binding = {};
     desc_set_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     desc_set_layout_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -412,24 +425,24 @@ Pipeline::Pipeline(const Device* device)
     desc_set_layout_cinfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     desc_set_layout_cinfo.bindingCount = 1;
     desc_set_layout_cinfo.pBindings = &desc_set_layout_binding;
-    VK_ASSERT(vkCreateDescriptorSetLayout(p_device->self, &desc_set_layout_cinfo, nullptr, &desc_set_layout));
+    VK_ASSERT(vkCreateDescriptorSetLayout(p_device->self, &desc_set_layout_cinfo, nullptr, &descSetLayout));
 
         // pipeline layout
-    VkPipelineLayout pipeline_layout;
+    VkPipelineLayout pipelineLayout;
     VkPipelineLayoutCreateInfo layout_info = {};
     layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layout_info.setLayoutCount = 1;
-    layout_info.pSetLayouts = &desc_set_layout;
+    layout_info.pSetLayouts = &descSetLayout;
     layout_info.pushConstantRangeCount = 0;
     layout_info.pPushConstantRanges = nullptr;
-    VK_ASSERT(vkCreatePipelineLayout(p_device->self, &layout_info, nullptr, &pipeline_layout));
+    VK_ASSERT(vkCreatePipelineLayout(p_device->self, &layout_info, nullptr, &pipelineLayout));
 
     VkDescriptorSetAllocateInfo desc_set_alloc_info = {};
     desc_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     desc_set_alloc_info.descriptorPool = desc_pool;
-    desc_set_alloc_info.pSetLayouts = &desc_set_layout;
+    desc_set_alloc_info.pSetLayouts = &descSetLayout;
     desc_set_alloc_info.descriptorSetCount = 1;
-    VK_ASSERT(vkAllocateDescriptorSets(p_device->self, &desc_set_alloc_info, &desc_set));
+    VK_ASSERT(vkAllocateDescriptorSets(p_device->self, &desc_set_alloc_info, &descSet));
 
     //
     // buffers
@@ -481,7 +494,7 @@ Pipeline::Pipeline(const Device* device)
     VkWriteDescriptorSet write_desc_set = {};
     write_desc_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write_desc_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    write_desc_set.dstSet = desc_set;
+    write_desc_set.dstSet = descSet;
     write_desc_set.pBufferInfo = &desc_buffer_info;
     write_desc_set.pImageInfo = nullptr;
     write_desc_set.descriptorCount = 1;
@@ -494,7 +507,7 @@ Pipeline::Pipeline(const Device* device)
     VkComputePipelineCreateInfo comp_pipeline_create_info = {};
     comp_pipeline_create_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     comp_pipeline_create_info.stage = comp_shader_info;
-    comp_pipeline_create_info.layout = pipeline_layout;
+    comp_pipeline_create_info.layout = pipelineLayout;
     comp_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
     comp_pipeline_create_info.basePipelineIndex = 0;
 
@@ -504,8 +517,8 @@ Pipeline::Pipeline(const Device* device)
     vkCreatePipelineCache(p_device->self, &pipeline_cache_create_info, nullptr, &pipeline_cache);
 
     printf("pipelinecreation\n");
-    VkPipeline compute_pipeline;
-    VK_ASSERT(vkCreateComputePipelines(p_device->self, VK_NULL_HANDLE, 1, &comp_pipeline_create_info, nullptr, &compute_pipeline));
+    VkPipeline computePipeline;
+    VK_ASSERT(vkCreateComputePipelines(p_device->self, VK_NULL_HANDLE, 1, &comp_pipeline_create_info, nullptr, &computePipeline));
 
 
     //@@ add command buffer submit for ss
@@ -532,9 +545,19 @@ Pipeline::Pipeline(const Device* device)
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
         0, 1, &bufferBarrier
         );
+    commandBuffer.bindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
 
+    commandBuffer.bindDescriptorSets(
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        pipelineLayout,
+        0, 1, &descSet,
+        0, 0
+    );
 
-    commandBuffer.bindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline);
+    commandBuffer.dispatch(
+        32, 1, 1
+    );
+
     commandBuffer.end();
 }
 }
