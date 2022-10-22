@@ -45,6 +45,14 @@ struct Buffer {
         // default
         memcpy(info.pMappedData, data, size);
     }
+
+    void* data() {
+        return info.pMappedData;
+    }
+
+    size_t size() {
+        return info.size;
+    }
 };
 
 struct CommandBuffer {
@@ -503,7 +511,6 @@ Pipeline::Pipeline(const Device* device)
 
     printf( "descriptor done\n" );
 
-
     VkComputePipelineCreateInfo comp_pipeline_create_info = {};
     comp_pipeline_create_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     comp_pipeline_create_info.stage = comp_shader_info;
@@ -531,19 +538,19 @@ Pipeline::Pipeline(const Device* device)
     VK_ASSERT(vkCreateFence(p_device->self, &fenceCreateInfo, nullptr, &fence));
 
     commandBuffer.begin();
-    VkBufferMemoryBarrier bufferBarrier = {};
-    bufferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    bufferBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    bufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    bufferBarrier.buffer = buffer.self;
-    bufferBarrier.size = VK_WHOLE_SIZE;
-    bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    VkBufferMemoryBarrier bufferBarrier0 = {};
+    bufferBarrier0.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarrier0.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    bufferBarrier0.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    bufferBarrier0.buffer = buffer.self;
+    bufferBarrier0.size = VK_WHOLE_SIZE;
+    bufferBarrier0.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier0.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
     commandBuffer.pipelineBarrier(
         VK_PIPELINE_STAGE_HOST_BIT, 
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
-        0, 1, &bufferBarrier
+        0, 1, &bufferBarrier0
         );
     commandBuffer.bindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
 
@@ -558,6 +565,52 @@ Pipeline::Pipeline(const Device* device)
         32, 1, 1
     );
 
+    VkBufferMemoryBarrier bufferBarrier1 = {};
+    bufferBarrier1.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarrier1.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    bufferBarrier1.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    bufferBarrier1.buffer = buffer.self;
+    bufferBarrier1.size = VK_WHOLE_SIZE;
+    bufferBarrier1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+    commandBuffer.pipelineBarrier(
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 1, &bufferBarrier1
+    );
+
+    VkBufferMemoryBarrier bufferBarrier2 = {};
+    bufferBarrier2.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarrier2.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    bufferBarrier2.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    bufferBarrier2.buffer = buffer.self;
+    bufferBarrier2.size = VK_WHOLE_SIZE;
+    bufferBarrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+    commandBuffer.pipelineBarrier(
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        0, 1, &bufferBarrier2
+    );
+
     commandBuffer.end();
+
+    vkResetFences( p_device->self, 1, &fence );
+
+    const VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    VkSubmitInfo computeSubmitInfo ={};
+    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    computeSubmitInfo.pWaitDstStageMask = &waitStageMask;
+    computeSubmitInfo.commandBufferCount = 1;
+    computeSubmitInfo.pCommandBuffers = &commandBuffer.self;
+    vkQueueSubmit( p_device->queue, 1, &computeSubmitInfo, fence );
+    vkWaitForFences( p_device->self, 1, &fence, VK_TRUE, UINT64_MAX);
+
+    std::vector<float> output( buffer.size() );
+       
+    memcpy( buffer.data(), output.data(), buffer.size() );
+    std::cout << output[0] << std::endl;
 }
 }
