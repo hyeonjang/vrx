@@ -334,6 +334,64 @@ static std::vector<char> readFile( const std::string& filename ) {
     return buffer;
 }
 
+struct Descriptor {
+
+    Descriptor( const VkDevice* device ):pDevice(device) {
+        create_descriptor_pool();
+        create_descriptor_layout();
+        allocate_descriptor_set();
+    }
+
+    void updateDescriptorSets() {
+
+    }
+
+private:
+    inline void create_descriptor_pool() {
+        VkDescriptorPoolSize poolSize = {};
+        poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        poolSize.descriptorCount = 1;
+
+        VkDescriptorPoolCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        createInfo.poolSizeCount = 1;
+        createInfo.pPoolSizes = &poolSize;
+        createInfo.maxSets = 1;
+        VK_ASSERT(vkCreateDescriptorPool(*pDevice, &createInfo, nullptr, &pool));
+    }
+
+    inline void create_descriptor_layout() {
+        VkDescriptorSetLayoutBinding binding = {};
+        binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        binding.binding = 0;
+        binding.descriptorCount = 1;
+
+        VkDescriptorSetLayoutCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        createInfo.bindingCount = 1;
+        createInfo.pBindings = &binding;
+        VK_ASSERT(vkCreateDescriptorSetLayout(*pDevice, &createInfo, nullptr, &setLayout));
+    }
+
+    inline void allocate_descriptor_set() {
+
+        VkDescriptorSetAllocateInfo desc_set_alloc_info = {};
+        desc_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        desc_set_alloc_info.descriptorPool = pool;
+        desc_set_alloc_info.pSetLayouts = &setLayout;
+        desc_set_alloc_info.descriptorSetCount = 1;
+        VK_ASSERT(vkAllocateDescriptorSets(*pDevice, &desc_set_alloc_info, &set));
+    }
+
+public:
+    VkDescriptorPool        pool;
+    VkDescriptorSet         set;
+    VkDescriptorSetLayout   setLayout;
+private:
+    const VkDevice*         pDevice;
+};
+
 struct Pipeline {
 
     Pipeline( const Device* device );
@@ -341,11 +399,12 @@ struct Pipeline {
 // func
     // shaders
     void create_specialization();
-    VkShaderModule create_shader_module();
+    VkShaderModule   create_shader_module();
+    VkPipelineLayout create_pipeline_layout(VkDescriptorSetLayout* descSetLayout, size_t layoutSize);
     
 // member
-    VkPipeline self;
-    const Device* p_device; // borrowing
+    VkPipeline      self;
+    const Device*   p_device; // borrowing
 };
 
 VkShaderModule Pipeline::create_shader_module() {
@@ -381,6 +440,22 @@ VkShaderModule Pipeline::create_shader_module() {
     return shadermodule;
 }
 
+VkPipelineLayout Pipeline::create_pipeline_layout(VkDescriptorSetLayout* descSetLayout, size_t layoutSize) {
+
+    VkPipelineLayout layout;
+
+    VkPipelineLayoutCreateInfo info ={};
+    info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    info.setLayoutCount = layoutSize;
+    info.pSetLayouts = descSetLayout;
+    info.pushConstantRangeCount = 0;
+    info.pPushConstantRanges = nullptr;
+    
+    VK_ASSERT(vkCreatePipelineLayout(p_device->self, &info, nullptr, &layout));
+
+    return layout;
+}
+
 Pipeline::Pipeline(const Device* device)
 :p_device(device) {
 
@@ -407,50 +482,8 @@ Pipeline::Pipeline(const Device* device)
     comp_shader_info.pName = "main";
     assert(comp_shader_info.module != VK_NULL_HANDLE);
 
-    // desc pool
-    VkDescriptorPool desc_pool;
-    VkDescriptorPoolSize pool_size ={};
-    pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    pool_size.descriptorCount = 1;
-
-    VkDescriptorPoolCreateInfo desc_pool_create_info = {};
-    desc_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    desc_pool_create_info.poolSizeCount = 1;
-    desc_pool_create_info.pPoolSizes = &pool_size;
-    desc_pool_create_info.maxSets = 1;
-    VK_ASSERT(vkCreateDescriptorPool(p_device->self, &desc_pool_create_info, nullptr, &desc_pool));
-    
-    // desc layout
-    VkDescriptorSet descSet;
-    VkDescriptorSetLayout descSetLayout;
-    VkDescriptorSetLayoutBinding desc_set_layout_binding = {};
-    desc_set_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    desc_set_layout_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    desc_set_layout_binding.binding = 0;
-    desc_set_layout_binding.descriptorCount = 1;
-
-    VkDescriptorSetLayoutCreateInfo desc_set_layout_cinfo = {};
-    desc_set_layout_cinfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    desc_set_layout_cinfo.bindingCount = 1;
-    desc_set_layout_cinfo.pBindings = &desc_set_layout_binding;
-    VK_ASSERT(vkCreateDescriptorSetLayout(p_device->self, &desc_set_layout_cinfo, nullptr, &descSetLayout));
-
-        // pipeline layout
-    VkPipelineLayout pipelineLayout;
-    VkPipelineLayoutCreateInfo layout_info = {};
-    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layout_info.setLayoutCount = 1;
-    layout_info.pSetLayouts = &descSetLayout;
-    layout_info.pushConstantRangeCount = 0;
-    layout_info.pPushConstantRanges = nullptr;
-    VK_ASSERT(vkCreatePipelineLayout(p_device->self, &layout_info, nullptr, &pipelineLayout));
-
-    VkDescriptorSetAllocateInfo desc_set_alloc_info = {};
-    desc_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    desc_set_alloc_info.descriptorPool = desc_pool;
-    desc_set_alloc_info.pSetLayouts = &descSetLayout;
-    desc_set_alloc_info.descriptorSetCount = 1;
-    VK_ASSERT(vkAllocateDescriptorSets(p_device->self, &desc_set_alloc_info, &descSet));
+    // descriptor
+    Descriptor desc( &p_device->self );
 
     //
     // buffers
@@ -464,7 +497,10 @@ Pipeline::Pipeline(const Device* device)
     alloc_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
     alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
     Buffer buffer = p_device->createBuffer(buffer_info, alloc_info);
-
+    
+    CommandBuffer cmdBuffer = p_device->allocateCommandBuffer();
+    cmdBuffer.begin();
+    
     size_t size = 32;
     std::vector<uint32_t> computeInput(size);
     std::vector<uint32_t> computeOutput(size);
@@ -472,13 +508,11 @@ Pipeline::Pipeline(const Device* device)
     std::generate( computeInput.begin(), computeInput.end(), [&n]{ return n++;  } );
     buffer.copy((void*)&computeInput[0], sizeof(uint32_t)*size);
 
-    std::cout << computeInput[3] << std::endl;
-
+    std::cout << computeInput[0] << std::endl;
     //
     // command buffers
     //
-    CommandBuffer cmdBuffer = p_device->allocateCommandBuffer();
-    cmdBuffer.begin();
+
     cmdBuffer.end();
 
     VkFence fence;
@@ -502,7 +536,7 @@ Pipeline::Pipeline(const Device* device)
     VkWriteDescriptorSet write_desc_set = {};
     write_desc_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write_desc_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    write_desc_set.dstSet = descSet;
+    write_desc_set.dstSet = desc.set;
     write_desc_set.pBufferInfo = &desc_buffer_info;
     write_desc_set.pImageInfo = nullptr;
     write_desc_set.descriptorCount = 1;
@@ -511,6 +545,7 @@ Pipeline::Pipeline(const Device* device)
 
     printf( "descriptor done\n" );
 
+    VkPipelineLayout pipelineLayout = create_pipeline_layout(&desc.setLayout, 1);
     VkComputePipelineCreateInfo comp_pipeline_create_info = {};
     comp_pipeline_create_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     comp_pipeline_create_info.stage = comp_shader_info;
@@ -557,7 +592,7 @@ Pipeline::Pipeline(const Device* device)
     commandBuffer.bindDescriptorSets(
         VK_PIPELINE_BIND_POINT_COMPUTE,
         pipelineLayout,
-        0, 1, &descSet,
+        0, 1, &desc.set,
         0, 0
     );
 
@@ -611,6 +646,6 @@ Pipeline::Pipeline(const Device* device)
     std::vector<float> output( buffer.size() );
        
     memcpy( buffer.data(), output.data(), buffer.size() );
-    std::cout << output[0] << std::endl;
+    std::cout << output[2] << std::endl;
 }
 }
