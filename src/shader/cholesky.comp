@@ -28,4 +28,5 @@ void main()
 	if (index >= BUFFER_ELEMENTS) 
 		return;	
 	values[index] = fibonacci(values[index]);
+	values[index] = 40;
 }

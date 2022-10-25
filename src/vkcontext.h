@@ -459,70 +459,60 @@ VkPipelineLayout Pipeline::create_pipeline_layout(VkDescriptorSetLayout* descSet
 Pipeline::Pipeline(const Device* device)
 :p_device(device) {
 
-    struct specialization_t {
-        uint32_t BUFFER_ELEMENT_COUNT = 32;
-    } speicalization;
-
-    VkSpecializationMapEntry spec_map_entry;
-    spec_map_entry.constantID = 0;
-    spec_map_entry.offset = 0;
-    spec_map_entry.size = sizeof( uint32_t );
-
-    VkSpecializationInfo spec_info;
-    spec_info.mapEntryCount = 1;
-    spec_info.pMapEntries = &spec_map_entry;
-    spec_info.dataSize = sizeof(specialization_t);
-    spec_info.pData = (void*)(&speicalization);
-
-    VkPipelineShaderStageCreateInfo comp_shader_info = {};
-    comp_shader_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    comp_shader_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    comp_shader_info.module = create_shader_module();
-    comp_shader_info.pSpecializationInfo = &spec_info;
-    comp_shader_info.pName = "main";
-    assert(comp_shader_info.module != VK_NULL_HANDLE);
-
     // descriptor
     Descriptor desc( &p_device->self );
 
     //
     // buffers
     //
-    VkBufferCreateInfo buffer_info = {};
-    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    buffer_info.size = 65536;
-    buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    
-    VmaAllocationCreateInfo alloc_info = {};
-    alloc_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    Buffer buffer = p_device->createBuffer(buffer_info, alloc_info);
-    
-    CommandBuffer cmdBuffer = p_device->allocateCommandBuffer();
-    cmdBuffer.begin();
-    
+    VkBufferCreateInfo hostBufInfo = {};
+    hostBufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    hostBufInfo.size = 65536;
+    hostBufInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VmaAllocationCreateInfo hostAllocInfo = {};
+    hostAllocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
+    hostAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    Buffer bufHost = p_device->createBuffer(hostBufInfo, hostAllocInfo);
+
     size_t size = 32;
     std::vector<uint32_t> computeInput(size);
     std::vector<uint32_t> computeOutput(size);
     uint32_t n = 0;
     std::generate( computeInput.begin(), computeInput.end(), [&n]{ return n++;  } );
-    buffer.copy((void*)&computeInput[0], sizeof(uint32_t)*size);
+    bufHost.copy((void*)&computeInput[0], sizeof(uint32_t)*size);
+    std::cout << computeInput[2] << std::endl;
 
-    std::cout << computeInput[0] << std::endl;
+    VkBufferCreateInfo deviceBufInfo = {};
+    deviceBufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    deviceBufInfo.size = 65536;
+    deviceBufInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VmaAllocationCreateInfo deviceAllocInfo = {};
+    deviceAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+    deviceAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    Buffer bufDevice = p_device->createBuffer(deviceBufInfo, deviceAllocInfo);
+    
+    CommandBuffer cmdBuffer = p_device->allocateCommandBuffer();
+    cmdBuffer.begin();
+    
+    VkBufferCopy copyRegion ={};
+    copyRegion.size = sizeof( uint32_t )*size;
+    vkCmdCopyBuffer( cmdBuffer.self, bufHost.self, bufDevice.self, 1, &copyRegion );
+
     //
     // command buffers
     //
 
     cmdBuffer.end();
-
+    VkSubmitInfo submitInfo ={};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer.self;
     VkFence fence;
     VkFenceCreateInfo fenceInfo ={};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    // fenceInfo.flags = VK_FLAGS_NONE;
+    fenceInfo.flags = 0;
     VK_ASSERT(vkCreateFence(p_device->self, &fenceInfo, nullptr, &fence));
 
-    VkSubmitInfo submitInfo ={};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     p_device->queueSubmit(submitInfo, fence);
     vkWaitForFences(p_device->self, 1, &fence, VK_TRUE, UINT64_MAX);
 
@@ -530,7 +520,7 @@ Pipeline::Pipeline(const Device* device)
     p_device->freeCommandBuffers(&cmdBuffer.self, 1);
 
     VkDescriptorBufferInfo desc_buffer_info = {};
-    desc_buffer_info.buffer = buffer.self;
+    desc_buffer_info.buffer = bufDevice.self;
     desc_buffer_info.offset = 0;
     desc_buffer_info.range = VK_WHOLE_SIZE;
     VkWriteDescriptorSet write_desc_set = {};
@@ -544,6 +534,28 @@ Pipeline::Pipeline(const Device* device)
     vkUpdateDescriptorSets(p_device->self, 1, &write_desc_set, 0, NULL);
 
     printf( "descriptor done\n" );
+        struct specialization_t {
+        uint32_t BUFFER_ELEMENT_COUNT = 32;
+    } speicalization;
+
+    VkSpecializationMapEntry spec_map_entry;
+    spec_map_entry.constantID = 0;
+    spec_map_entry.offset = 0;
+    spec_map_entry.size = sizeof( uint32_t );
+
+    VkSpecializationInfo spec_info;
+    spec_info.mapEntryCount = 1;
+    spec_info.pMapEntries = &spec_map_entry;
+    spec_info.dataSize = sizeof(speicalization);
+    spec_info.pData = (void*)(&speicalization);
+
+    VkPipelineShaderStageCreateInfo comp_shader_info = {};
+    comp_shader_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    comp_shader_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    comp_shader_info.module = create_shader_module();
+    comp_shader_info.pSpecializationInfo = &spec_info;
+    comp_shader_info.pName = "main";
+    assert(comp_shader_info.module != VK_NULL_HANDLE);
 
     VkPipelineLayout pipelineLayout = create_pipeline_layout(&desc.setLayout, 1);
     VkComputePipelineCreateInfo comp_pipeline_create_info = {};
@@ -577,7 +589,7 @@ Pipeline::Pipeline(const Device* device)
     bufferBarrier0.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
     bufferBarrier0.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
     bufferBarrier0.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    bufferBarrier0.buffer = buffer.self;
+    bufferBarrier0.buffer = bufDevice.self;
     bufferBarrier0.size = VK_WHOLE_SIZE;
     bufferBarrier0.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     bufferBarrier0.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -600,34 +612,34 @@ Pipeline::Pipeline(const Device* device)
         32, 1, 1
     );
 
-    VkBufferMemoryBarrier bufferBarrier1 = {};
-    bufferBarrier1.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    bufferBarrier1.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    bufferBarrier1.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    bufferBarrier1.buffer = buffer.self;
-    bufferBarrier1.size = VK_WHOLE_SIZE;
-    bufferBarrier1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarrier1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    //VkBufferMemoryBarrier bufferBarrier1 = {};
+    //bufferBarrier0.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarrier0.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    bufferBarrier0.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    bufferBarrier0.buffer = bufDevice.self;
+    bufferBarrier0.size = VK_WHOLE_SIZE;
+    bufferBarrier0.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier0.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
     commandBuffer.pipelineBarrier(
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         VK_PIPELINE_STAGE_TRANSFER_BIT,
-        0, 1, &bufferBarrier1
+        0, 1, &bufferBarrier0
     );
 
-    VkBufferMemoryBarrier bufferBarrier2 = {};
-    bufferBarrier2.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    bufferBarrier2.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    bufferBarrier2.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    bufferBarrier2.buffer = buffer.self;
-    bufferBarrier2.size = VK_WHOLE_SIZE;
-    bufferBarrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    //VkBufferMemoryBarrier bufferBarrier2 = {};
+    //bufferBarrier0.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarrier0.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    bufferBarrier0.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    bufferBarrier0.buffer = bufHost.self;
+    bufferBarrier0.size = VK_WHOLE_SIZE;
+    bufferBarrier0.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier0.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
     commandBuffer.pipelineBarrier(
         VK_PIPELINE_STAGE_TRANSFER_BIT,
         VK_PIPELINE_STAGE_HOST_BIT,
-        0, 1, &bufferBarrier2
+        0, 1, &bufferBarrier0
     );
 
     commandBuffer.end();
@@ -643,9 +655,12 @@ Pipeline::Pipeline(const Device* device)
     vkQueueSubmit( p_device->queue, 1, &computeSubmitInfo, fence );
     vkWaitForFences( p_device->self, 1, &fence, VK_TRUE, UINT64_MAX);
 
-    std::vector<float> output( buffer.size() );
+    std::vector<uint32_t> input( bufDevice.size(), 3 );
+    std::vector<uint32_t> output( bufHost.size(), 10 );
        
-    memcpy( buffer.data(), output.data(), buffer.size() );
+    memcpy( input.data(), bufDevice.data(), input.size() );
+    memcpy( output.data(), bufHost.data(), bufHost.size() );
+    std::cout << input[2] << std::endl;
     std::cout << output[2] << std::endl;
 }
 }
