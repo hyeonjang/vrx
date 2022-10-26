@@ -65,12 +65,12 @@ struct CommandBuffer {
         VK_ASSERT(vkBeginCommandBuffer(self, &info));
     };
 
-    inline void end() {
+    void end() {
         VK_ASSERT(vkEndCommandBuffer(self));
     }
 
-    inline void copyBuffer(VkBuffer src, VkBuffer dst, VkBufferCopy copy) {
-        vkCmdCopyBuffer(self, src, dst, 1, &copy);
+    void copyBuffer(VkBuffer src, VkBuffer dst, uint32_t regionCount, const VkBufferCopy* copy) {
+        vkCmdCopyBuffer(self, src, dst, regionCount, copy);
     };
 
     inline void bindPipeline(VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline) {
@@ -138,7 +138,7 @@ struct Device {
     VmaAllocator    allocator;
     VkQueue         queue;
 
-    inline Buffer createBuffer(VkBufferCreateInfo buf_info, VmaAllocationCreateInfo alloc_info) const {
+    Buffer createBuffer(VkBufferCreateInfo buf_info, VmaAllocationCreateInfo alloc_info) const {
         Buffer buf;
         
         //@@ error checking
@@ -147,7 +147,7 @@ struct Device {
         return buf;
     };
 
-    inline CommandBuffer allocateCommandBuffer() const {
+    CommandBuffer allocateCommandBuffer() const {
         CommandBuffer cmdBuffer;
 
         VkCommandBufferAllocateInfo info = {};
@@ -162,11 +162,11 @@ struct Device {
         return cmdBuffer;
     }
 
-    inline void freeCommandBuffers(const VkCommandBuffer* cmd, size_t size) const {
+    void freeCommandBuffers(const VkCommandBuffer* cmd, size_t size) const {
         vkFreeCommandBuffers(self, commandPool, size, cmd);
     }
 
-    inline void queueSubmit(VkSubmitInfo submitInfo, const VkFence& fence) const {
+    void queueSubmit(VkSubmitInfo submitInfo, const VkFence& fence) const {
         VK_ASSERT(vkQueueSubmit(queue, 1, &submitInfo, fence));
     }
 };
@@ -399,6 +399,7 @@ struct Pipeline {
 // func
     // shaders
     void create_specialization();
+    void compile_shader();
     VkShaderModule   create_shader_module();
     VkPipelineLayout create_pipeline_layout(VkDescriptorSetLayout* descSetLayout, size_t layoutSize);
     
@@ -407,12 +408,19 @@ struct Pipeline {
     const Device*   p_device; // borrowing
 };
 
+void Pipeline::compile_shader() {
+
+    char command[256];
+    sprintf( command, "glslc %s/../shader/cholesky.comp -o %s/../shader/cholesky.spv", __FILE__, __FILE__ );
+    system( command );
+}
+
 VkShaderModule Pipeline::create_shader_module() {
 
     // call glslc compiler
 
     // std::cout << sizeof(__FILE__) << std::endl;
-
+    compile_shader();
     // const char* file = __FILE__;
     // const char* check = strstr(file, "/vkcontext.h");
     char path[80];
@@ -492,17 +500,14 @@ Pipeline::Pipeline(const Device* device)
     Buffer bufDevice = p_device->createBuffer(deviceBufInfo, deviceAllocInfo);
     
     CommandBuffer cmdBuffer = p_device->allocateCommandBuffer();
-    cmdBuffer.begin();
-    
-    VkBufferCopy copyRegion ={};
-    copyRegion.size = sizeof( uint32_t )*size;
-    vkCmdCopyBuffer( cmdBuffer.self, bufHost.self, bufDevice.self, 1, &copyRegion );
+    {
+        cmdBuffer.begin();
+        VkBufferCopy copyRegion ={};
+        copyRegion.size = sizeof( uint32_t )*size;
+        cmdBuffer.copyBuffer( bufHost.self, bufDevice.self, 1, &copyRegion );
+        cmdBuffer.end();
+    }
 
-    //
-    // command buffers
-    //
-
-    cmdBuffer.end();
     VkSubmitInfo submitInfo ={};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
@@ -534,7 +539,7 @@ Pipeline::Pipeline(const Device* device)
     vkUpdateDescriptorSets(p_device->self, 1, &write_desc_set, 0, NULL);
 
     printf( "descriptor done\n" );
-        struct specialization_t {
+    struct specialization_t {
         uint32_t BUFFER_ELEMENT_COUNT = 32;
     } speicalization;
 
@@ -554,6 +559,7 @@ Pipeline::Pipeline(const Device* device)
     comp_shader_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     comp_shader_info.module = create_shader_module();
     comp_shader_info.pSpecializationInfo = &spec_info;
+    comp_shader_info.pSpecializationInfo = &spec_info;
     comp_shader_info.pName = "main";
     assert(comp_shader_info.module != VK_NULL_HANDLE);
 
@@ -571,6 +577,7 @@ Pipeline::Pipeline(const Device* device)
     vkCreatePipelineCache(p_device->self, &pipeline_cache_create_info, nullptr, &pipeline_cache);
 
     printf("pipelinecreation\n");
+
     VkPipeline computePipeline;
     VK_ASSERT(vkCreateComputePipelines(p_device->self, VK_NULL_HANDLE, 1, &comp_pipeline_create_info, nullptr, &computePipeline));
 
