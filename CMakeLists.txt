@@ -8,17 +8,10 @@ find_package(Vulkan REQUIRED)
 
 set(
    SOURCE
-   
-   ./src/vkcontext.h
-   ./src/vkcontext.cpp
+   ./src/vkcholesky.hpp
+   ./src/vkcholesky.cpp
 )
 
-# add_library(vk-cholesky ./src/vkcontext.c)
-add_executable(vk-cholesky ${SOURCE})
-target_include_directories(vk-cholesky PUBLIC Vulkan::Headers)
-target_link_libraries(vk-cholesky Vulkan::Vulkan)
-
-if(WIN32)
-    add_subdirectory(./ext/glfw-3.3.8 glfw)
-    target_link_libraries(vk-cholesky glfw)
-endif()
+add_library(vkcholesky ${SOURCE})
+target_include_directories(vkcholesky PUBLIC Vulkan::Headers)
+target_link_libraries(vkcholesky Vulkan::Vulkan)

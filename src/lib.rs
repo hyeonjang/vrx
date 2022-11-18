@@ -7,10 +7,9 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::mem;
 
     #[test]
-    fn it_works() {
+    fn init_vulkan() {
         unsafe {
             initVulkan();
         }
