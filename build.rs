@@ -8,7 +8,6 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-
     // add vk-cholesky
     println!("cargo:rustc-link-search=C:/VulkanSDK/1.3.216.0/Lib");
     println!("cargo:rustc-link-search=build/Debug/");
@@ -21,6 +20,7 @@ fn main() {
     let bindings = bindgen::Builder::default()
         .header("src/vkcholesky.hpp")
         .clang_arg("-IC:/VulkanSDK/1.3.216.0/Include")
+        .size_t_is_usize(true)
         .generate()
         .expect("Unable to generate bindings");
 
