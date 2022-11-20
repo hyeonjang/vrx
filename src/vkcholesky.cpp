@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 
+VkDevice         g_device;
+
 void initVulkan() {
     VkApplicationInfo app_info ={};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;

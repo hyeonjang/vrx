@@ -29,7 +29,7 @@
 // 
 static VkInstance       g_instance;
 static VkPhysicalDevice g_physicalDevice;
-static VkDevice         g_device;
+extern VkDevice         g_device;
 static uint32_t         g_queueFamillyIndex;
 static VkQueue          g_queue;
 static VkCommandPool    g_commandPool;
