@@ -5,8 +5,7 @@
 use vx::*;
 
 fn main() {
-
-    // 
+    //
     unsafe {
         initVulkan();
     }
