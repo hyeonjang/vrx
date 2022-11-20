@@ -30,6 +30,9 @@
 static VkInstance       g_instance;
 static VkPhysicalDevice g_physicalDevice;
 static VkDevice         g_device;
+static uint32_t         g_queueFamillyIndex;
+static VkQueue          g_queue;
+static VkCommandPool    g_commandPool;
 
 void initVulkan();
 
@@ -39,254 +42,89 @@ private:
     VkDeviceMemory      memory;
     void*               data;
     size_t              size;
-    const VkDevice*     p_device;
 public:
     Buffer(VkBufferCreateInfo info, const VkDevice* device);
     void alloc(VkMemoryAllocateInfo info);
     void map(void* _data);
 };
 
-struct CommandBuffer
-{
-public:
-    void func(){};
-    /* data */
-};
-// struct CommandBuffer {
-//     VkCommandBuffer self;
+struct CommandBuffer {
+    VkCommandBuffer self;
 
-//     inline void begin() {
-//         VkCommandBufferBeginInfo info = {};
-//         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    void begin();
+    void end();
 
-//         VK_ASSERT(vkBeginCommandBuffer(self, &info));
-//     };
+    void copyBuffer(VkBuffer src, VkBuffer dst, uint32_t regionCount, const VkBufferCopy* copy);
+    void bindPipeline(VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline);
 
-//     void end() {
-//         VK_ASSERT(vkEndCommandBuffer(self));
-//     }
+    inline void bindDescriptorSets(
+        VkPipelineBindPoint     pipelineBindPoint,
+        VkPipelineLayout        pipelineLayout,
+        uint32_t                firstSet,
+        uint32_t                descriptorSetCount,
+        const VkDescriptorSet*  pDescriptorSet,
+        uint32_t                dynamicOffsetCount,
+        const uint32_t*         pDynamicOffsets
+        ) {
+        vkCmdBindDescriptorSets(
+            self, pipelineBindPoint, 
+            pipelineLayout, firstSet, 
+            descriptorSetCount, pDescriptorSet, 
+            dynamicOffsetCount, pDynamicOffsets
+        );
+    }
 
-//     void copyBuffer(VkBuffer src, VkBuffer dst, uint32_t regionCount, const VkBufferCopy* copy) {
-//         vkCmdCopyBuffer(self, src, dst, regionCount, copy);
-//     };
+    inline void dispatch(uint32_t countX, uint32_t countY, uint32_t countZ) {
+        vkCmdDispatch( self, countX, countY, countZ );
+    }
 
-//     inline void bindPipeline(VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline) {
-//         vkCmdBindPipeline(self, pipelineBindPoint, pipeline);
-//     }
-
-//     inline void bindDescriptorSets(
-//         VkPipelineBindPoint     pipelineBindPoint,
-//         VkPipelineLayout        pipelineLayout,
-//         uint32_t                firstSet,
-//         uint32_t                descriptorSetCount,
-//         const VkDescriptorSet*  pDescriptorSet,
-//         uint32_t                dynamicOffsetCount,
-//         const uint32_t*         pDynamicOffsets
-//         ) {
-//         vkCmdBindDescriptorSets(
-//             self, pipelineBindPoint, 
-//             pipelineLayout, firstSet, 
-//             descriptorSetCount, pDescriptorSet, 
-//             dynamicOffsetCount, pDynamicOffsets
-//         );
-//     }
-
-//     inline void dispatch(uint32_t countX, uint32_t countY, uint32_t countZ) {
-//         vkCmdDispatch( self, countX, countY, countZ );
-//     }
-
-//     inline void pipelineBarrier(
-//         VkPipelineStageFlags            flag0, 
-//         VkPipelineStageFlags            flag1, 
-//         VkDependencyFlags               dependencyFlag, 
-//         uint32_t                        nMemomryBarrier, 
-//         const VkMemoryBarrier*          pMemomryBarrier,
-//         uint32_t                        nBufferMemomryBarrier, 
-//         const VkBufferMemoryBarrier*    pBufferMemomryBarrier,
-//         uint32_t                        nImageMemoryBarrier,
-//         const VkImageMemoryBarrier*     pImageMemoryBarrier) {
-//         vkCmdPipelineBarrier(
-//             self, flag0, flag1, dependencyFlag, 
-//             nMemomryBarrier, pMemomryBarrier, 
-//             nBufferMemomryBarrier, pBufferMemomryBarrier, 
-//             nImageMemoryBarrier, pImageMemoryBarrier
-//         );
-//     }
+    inline void pipelineBarrier(
+        VkPipelineStageFlags            flag0, 
+        VkPipelineStageFlags            flag1, 
+        VkDependencyFlags               dependencyFlag, 
+        uint32_t                        nMemomryBarrier, 
+        const VkMemoryBarrier*          pMemomryBarrier,
+        uint32_t                        nBufferMemomryBarrier, 
+        const VkBufferMemoryBarrier*    pBufferMemomryBarrier,
+        uint32_t                        nImageMemoryBarrier,
+        const VkImageMemoryBarrier*     pImageMemoryBarrier) {
+        vkCmdPipelineBarrier(
+            self, flag0, flag1, dependencyFlag, 
+            nMemomryBarrier, pMemomryBarrier, 
+            nBufferMemomryBarrier, pBufferMemomryBarrier, 
+            nImageMemoryBarrier, pImageMemoryBarrier
+        );
+    }
     
-//     inline void pipelineBarrier(
-//         VkPipelineStageFlags            flag0, 
-//         VkPipelineStageFlags            flag1, 
-//         VkDependencyFlags               dependencyFlag, 
-//         uint32_t                        nBufferMemomryBarrier, 
-//         const VkBufferMemoryBarrier*    pBufferMemomryBarrier) {
-//         vkCmdPipelineBarrier(
-//             self, flag0, flag1, dependencyFlag, 
-//             0, nullptr, 
-//             nBufferMemomryBarrier, pBufferMemomryBarrier, 
-//             0, nullptr
-//         );
-//     }
-// };
+    inline void pipelineBarrier(
+        VkPipelineStageFlags            flag0, 
+        VkPipelineStageFlags            flag1, 
+        VkDependencyFlags               dependencyFlag, 
+        uint32_t                        nBufferMemomryBarrier, 
+        const VkBufferMemoryBarrier*    pBufferMemomryBarrier) {
+        vkCmdPipelineBarrier(
+            self, flag0, flag1, dependencyFlag, 
+            0, nullptr, 
+            nBufferMemomryBarrier, pBufferMemomryBarrier, 
+            0, nullptr
+        );
+    }
+};
 
-// struct Device {
+struct Descriptor {
 
-//     VkDevice        self;
-//     VkCommandPool   commandPool;
-//     VmaAllocator    allocator;
-//     VkQueue         queue;
-
-//     Buffer createBuffer(VkBufferCreateInfo buf_info, VmaAllocationCreateInfo alloc_info) const {
-//         Buffer buf;
-        
-//         //@@ error checking
-//         VK_ASSERT(vmaCreateBuffer( allocator, &buf_info, &alloc_info, &buf.self, &buf.allocation, &buf.info ));
-        
-//         return buf;
-//     };
-
-//     CommandBuffer allocateCommandBuffer() const {
-//         CommandBuffer cmdBuffer;
-
-//         VkCommandBufferAllocateInfo info = {};
-//         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-//         info.commandPool = commandPool;
-//         info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-//         info.commandBufferCount = 1;
-
-//         //@@ error checking
-//         VK_ASSERT(vkAllocateCommandBuffers(self, &info, &cmdBuffer.self));
-
-//         return cmdBuffer;
-//     }
-
-//     void freeCommandBuffers(const VkCommandBuffer* cmd, size_t size) const {
-//         vkFreeCommandBuffers(self, commandPool, size, cmd);
-//     }
-
-//     void queueSubmit(VkSubmitInfo submitInfo, const VkFence& fence) const {
-//         VK_ASSERT(vkQueueSubmit(queue, 1, &submitInfo, fence));
-//     }
-// };
-
-// struct vkcontext_t {
-//     vkcontext_t();
-
-//     VkInstance instance; // VK_NULL_HANDLE
-//     VkPhysicalDevice physical_device;
-//     uint32_t queue_family_index;
-
-//     Device device;    
-
-// private:
-//     void create_instance();
-//     void create_physical_device();
-//     void initVxdevice();
-// };
-
-// vkcontext_t::vkcontext_t() {
-//     VkApplicationInfo app_info ={};
-//     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-//     app_info.pApplicationName = "vk-cholesky";
-//     app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-//     app_info.pEngineName = "No Engine";
-//     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-//     app_info.apiVersion = VK_API_VERSION_1_2;
-
-//     const char* layers[] ={
-//         "VK_LAYER_KHRONOS_validation"
-//     };
-
-//     const char* extensions[] ={
-//         "VK_EXT_debug_report"
-//     };
-
-//     // instance
-//     VkInstanceCreateInfo instance_create_info{};
-//     instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-//     instance_create_info.pApplicationInfo = &app_info;
-//     instance_create_info.enabledLayerCount = 1;
-//     instance_create_info.ppEnabledLayerNames = layers;
-//     instance_create_info.enabledExtensionCount = 1;
-//     instance_create_info.ppEnabledExtensionNames = extensions;
-//     // uint32_t glfwExtensionCount = 0;
-//     // const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-//     // instance_create_info.enabledLayerCount = 0;
-//     // instance_create_info.ppEnabledLayerNames = VK_NULL_HANDLE;
-//     // instance_create_info.enabledExtensionCount = glfwExtensionCount;
-//     // instance_create_info.ppEnabledExtensionNames = glfwExtensions;
-//     VK_ASSERT(vkCreateInstance(&instance_create_info, nullptr, &instance));
-
-//     // debugger
-
-//     // physcial device
-//     uint32_t deviceCount = 0;
-//     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-
-//     std::vector<VkPhysicalDevice> physical_devices(deviceCount);
-//     VK_ASSERT(vkEnumeratePhysicalDevices(instance, &deviceCount, &physical_devices[0]));
-//     physical_device = physical_devices[0];
-
-//     // queue family index
-//     uint32_t queue_family_count = 0;
-//     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
-
-//     std::vector<VkQueueFamilyProperties> queue_family_properties(queue_family_count);
-//     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, &queue_family_properties[0]);
-
-//     for(uint32_t i=0; i<queue_family_count; i++) {
-//         if(queue_family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-//         // if(queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-//             queue_family_index = i;
-//             // printf( "queue family index: %d", queue_family_index );
-//         }
-//     }
-//     //queue_family_index = 0;
-//     printf( "queue family index: %d\n", queue_family_index );
-
-//     initVxdevice();
-// }
-
-// void vkcontext_t::initVxdevice() {
-//     float queue_priority = 1.0;
-
-//     VkDeviceQueueCreateInfo device_queue_create_info {};
-//     device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-//     device_queue_create_info.queueFamilyIndex = queue_family_index;
-//     device_queue_create_info.queueCount = 1;
-//     device_queue_create_info.pQueuePriorities = &queue_priority;
-//     // device_queue_create_info.flags = VkDeviceQueueCreateFlagBits::VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT;
-
-//     VkPhysicalDeviceFeatures device_features{};
-//     VkDeviceCreateInfo device_create_info {};
-//     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-//     device_create_info.queueCreateInfoCount = 1;
-//     device_create_info.pQueueCreateInfos = &device_queue_create_info;
-//     device_create_info.pEnabledFeatures = &device_features;
-//     device_create_info.enabledLayerCount = 0;
-//     device_create_info.enabledExtensionCount = 0;
-//     VK_ASSERT(vkCreateDevice(physical_device, &device_create_info, nullptr, &device.self));
-
-//     //
-//     // get queues
-//     //
-//     vkGetDeviceQueue( device.self, queue_family_index, 0, &device.queue );
-
-//     //
-//     // vk command pool
-//     //
-//     VkCommandPoolCreateInfo cmd_pool_create_info ={};
-//     cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-//     cmd_pool_create_info.queueFamilyIndex = queue_family_index;
-//     cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-//     VK_ASSERT(vkCreateCommandPool(device.self, &cmd_pool_create_info, nullptr, &device.commandPool));
-
-//     // vma allocator
-//     VmaAllocatorCreateInfo allocator_cinfo = {};
-//     allocator_cinfo.instance = instance;
-//     allocator_cinfo.physicalDevice = physical_device;
-//     allocator_cinfo.device = device.self;
-//     VK_ASSERT(vmaCreateAllocator(&allocator_cinfo, &device.allocator));
-// }
+    Descriptor();
+    void updateDescriptorSets();
+private:
+    void create_descriptor_pool();
+    void create_descriptor_layout();
+    void allocate_descriptor_set();
+public:
+    VkDescriptorPool         pool;
+    VkDescriptorSet*         sets;
+    VkDescriptorSetLayout*   setLayouts;
+    uint32_t                 count;
+};
 
 // static size_t read_file_length(const char* filepath) {
 
@@ -314,80 +152,14 @@ public:
 //     return reinterpret_cast<uint32_t*>(buffer);
 // }
 
-// static std::vector<char> readFile( const std::string& filename ) {
-//     std::ifstream file( filename, std::ios::ate | std::ios::binary );
+// VkShaderModule create_shader_module(const uint32_t* shader_code_data, size_t size);
 
-//     if( !file.is_open() ) {
-//         throw std::runtime_error( "failed to open file!" );
-//     }
+struct ComputePipeline {
 
-//     size_t fileSize = (size_t) file.tellg();
-//     std::vector<char> buffer(fileSize);
 
-//     file.seekg(0);
-//     file.read(buffer.data(), fileSize);
-//     file.close();
-
-//     return buffer;
-// }
-
-// struct Descriptor {
-
-//     Descriptor( const VkDevice* device ):pDevice(device) {
-//         create_descriptor_pool();
-//         create_descriptor_layout();
-//         allocate_descriptor_set();
-//     }
-
-//     void updateDescriptorSets() {
-
-//     }
-
-// private:
-//     inline void create_descriptor_pool() {
-//         VkDescriptorPoolSize poolSize = {};
-//         poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-//         poolSize.descriptorCount = 1;
-
-//         VkDescriptorPoolCreateInfo createInfo = {};
-//         createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-//         createInfo.poolSizeCount = 1;
-//         createInfo.pPoolSizes = &poolSize;
-//         createInfo.maxSets = 1;
-//         VK_ASSERT(vkCreateDescriptorPool(*pDevice, &createInfo, nullptr, &pool));
-//     }
-
-//     inline void create_descriptor_layout() {
-//         VkDescriptorSetLayoutBinding binding = {};
-//         binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-//         binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-//         binding.binding = 0;
-//         binding.descriptorCount = 1;
-
-//         VkDescriptorSetLayoutCreateInfo createInfo = {};
-//         createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-//         createInfo.bindingCount = 1;
-//         createInfo.pBindings = &binding;
-//         VK_ASSERT(vkCreateDescriptorSetLayout(*pDevice, &createInfo, nullptr, &setLayout));
-//     }
-
-//     inline void allocate_descriptor_set() {
-
-//         VkDescriptorSetAllocateInfo desc_set_alloc_info = {};
-//         desc_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-//         desc_set_alloc_info.descriptorPool = pool;
-//         desc_set_alloc_info.pSetLayouts = &setLayout;
-//         desc_set_alloc_info.descriptorSetCount = 1;
-//         VK_ASSERT(vkAllocateDescriptorSets(*pDevice, &desc_set_alloc_info, &set));
-//     }
-
-// public:
-//     VkDescriptorPool        pool;
-//     VkDescriptorSet         set;
-//     VkDescriptorSetLayout   setLayout;
-// private:
-//     const VkDevice*         pDevice;
-// };
+public:
+    VkPipeline pipeline;
+};
 
 // struct Pipeline {
 

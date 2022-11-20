@@ -5,7 +5,17 @@
 use vx::*;
 
 fn main() {
+
+    // 
     unsafe {
         initVulkan();
     }
+
+    // buffer creation
+
+    // descriptor
+
+    // pipeline generation
+
+    // buffer submit
 }
