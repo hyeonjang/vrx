@@ -103,22 +103,41 @@ void initVulkan() {
 // 
 // VxBuffer
 // 
-void Buffer::alloc(VkMemoryAllocateInfo info) {
+Buffer::Buffer(const VkBufferCreateInfo info, size_t _size)
+:size(_size) {
+    vkCreateBuffer(g_device, &info, nullptr, &self);
+}
+
+void Buffer::alloc(const VkMemoryPropertyFlags memPropFlags) {
 
     VkPhysicalDeviceMemoryProperties mem_prop;
     vkGetPhysicalDeviceMemoryProperties(g_physicalDevice, &mem_prop);
 
     VkMemoryRequirements mem_req;
     vkGetBufferMemoryRequirements(g_device, self, &mem_req);
+    VkMemoryAllocateInfo info {};
+    info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    info.allocationSize = mem_req.size;
 
+    for(uint32_t i=0; i<mem_prop.memoryTypeCount; i++) {
+        if((mem_req.memoryTypeBits&1)==1) {
+            if((mem_prop.memoryTypes[i].propertyFlags & memPropFlags)==memPropFlags) {
+                info.memoryTypeIndex = i;
+            }
+        }
+    }
     vkAllocateMemory(g_device, &info, nullptr, &memory);
-    vkBindBufferMemory(g_device, self, memory, 0);
+
 }
 
 void Buffer::map(void* _data) {
     vkMapMemory(g_device, memory, 0, size, 0, &_data);
     memcpy(_data, data, size);
     vkUnmapMemory(g_device, memory);
+}
+
+void Buffer::bind() {
+    vkBindBufferMemory(g_device, self, memory, 0);
 }
 
 // 
@@ -146,10 +165,18 @@ void CommandBuffer::bindPipeline(VkPipelineBindPoint pipelineBindPoint, VkPipeli
 //
 //
 //
-Descriptor::Descriptor() {
+Descriptor::Descriptor(uint32_t _count)
+:count(_count),pool(VkDescriptorPool())
+,sets(new VkDescriptorSet[count])
+,setLayouts(new VkDescriptorSetLayout[count]) {
+
     this->create_descriptor_pool();
     this->create_descriptor_layout();
     this->allocate_descriptor_set();
+}
+Descriptor::~Descriptor(){
+    delete[] sets;
+    delete[] setLayouts;
 }
 
 void Descriptor::create_descriptor_pool() {
@@ -188,9 +215,51 @@ void Descriptor::allocate_descriptor_set() {
     vkAllocateDescriptorSets(g_device, &desc_set_alloc_info, sets); 
 }
 
+void Descriptor::updateDescriptorSets(const VkDescriptorBufferInfo info, size_t index) {
+
+    if(index > this->count - 1) {
+        // runtime error
+    }
+
+    VkWriteDescriptorSet write_desc_set = {};
+    write_desc_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write_desc_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    write_desc_set.dstSet = sets[index];
+    write_desc_set.pBufferInfo = &info;
+    write_desc_set.pImageInfo = nullptr;
+    write_desc_set.descriptorCount = count;
+    write_desc_set.dstBinding = 0;
+    vkUpdateDescriptorSets(g_device, 1, &write_desc_set, 0, NULL);
+}
 
 //
-// VxComputePipeline;
+// VxComputePipeline
 //
+ComputePipeline::ComputePipeline() 
+:pipelineLayout(VkPipelineLayout())
+,pipeline(VkPipeline()){}
 
-// void ComputePipeline:: 
+void ComputePipeline::createPipelineLayout(Descriptor descriptor) {
+
+    VkPipelineLayoutCreateInfo info {};
+    info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    info.pSetLayouts = descriptor.setLayouts;
+    info.setLayoutCount = descriptor.count;
+    // currently 
+    info.pPushConstantRanges = nullptr;
+    info.pushConstantRangeCount = 0;
+
+    vkCreatePipelineLayout(g_device, &info, nullptr, &pipelineLayout);
+}
+
+void ComputePipeline::createPipeline() {
+
+    VkComputePipelineCreateInfo info {};
+    info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    // info.stage
+    info.layout = pipelineLayout;
+    info.basePipelineHandle = VK_NULL_HANDLE;
+    info.basePipelineIndex = 0;
+
+    vkCreateComputePipelines(g_device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
+}

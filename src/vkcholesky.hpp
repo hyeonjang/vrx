@@ -43,9 +43,11 @@ private:
     void*               data;
     size_t              size;
 public:
-    Buffer(VkBufferCreateInfo info, const VkDevice* device);
-    void alloc(VkMemoryAllocateInfo info);
+    Buffer(const VkBufferCreateInfo info, size_t size);
+private:
+    void alloc(const VkMemoryPropertyFlags info);
     void map(void* _data);
+    void bind();
 };
 
 struct CommandBuffer {
@@ -113,8 +115,11 @@ struct CommandBuffer {
 
 struct Descriptor {
 
-    Descriptor();
-    void updateDescriptorSets();
+    Descriptor(uint32_t count);
+    ~Descriptor();
+
+    void updateDescriptorSets(const VkDescriptorBufferInfo info, size_t index);
+    void updateDescriptorSets(const VkDescriptorImageInfo  info, size_t index);
 private:
     void create_descriptor_pool();
     void create_descriptor_layout();
@@ -126,39 +131,16 @@ public:
     uint32_t                 count;
 };
 
-// static size_t read_file_length(const char* filepath) {
-
-//     char cwd[1024];
-//     GETCWD( cwd, sizeof( cwd ) );
-
-//     FILE* fp = fopen( filepath, "r" );
-//     assert( fp!=NULL );
-
-//     int seek_result = fseek( fp, 0, SEEK_END );
-//     size_t size = ftell(fp);
-    
-//     fclose( fp );
-//     return size;
-// }
-
-// static uint32_t* read_file(const char* filepath, size_t size) {
-
-//     char* buffer = (char*) malloc(sizeof(char)*size);
-//     FILE* fp = fopen(filepath, "r");
-
-//     fgets( buffer, sizeof( buffer ), fp );
-
-//     fclose(fp);
-//     return reinterpret_cast<uint32_t*>(buffer);
-// }
-
-// VkShaderModule create_shader_module(const uint32_t* shader_code_data, size_t size);
-
 struct ComputePipeline {
 
+    ComputePipeline();
 
+    void createPipelineLayout(Descriptor descriptor);
+    void createPipeline();
 public:
-    VkPipeline pipeline;
+    // VkPipelineShaderStageCreateInfo    shaderModuleCreateInfo;
+    VkPipelineLayout            pipelineLayout;
+    VkPipeline                  pipeline;
 };
 
 // struct Pipeline {
