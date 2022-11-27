@@ -20,6 +20,7 @@ fn main() {
     let bindings = bindgen::Builder::default()
         .header("src/vkcholesky.hpp")
         .clang_arg("-IC:/VulkanSDK/1.3.216.0/Include")
+        .prepend_enum_name(false)
         .size_t_is_usize(true)
         .generate()
         .expect("Unable to generate bindings");
