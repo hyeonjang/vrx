@@ -2,9 +2,16 @@
 
 #include <stdlib.h>
 
+// global variables
+VkInstance       g_instance;
+VkPhysicalDevice g_physicalDevice;
 VkDevice         g_device;
+uint32_t         g_queueFamillyIndex;
+VkQueue          g_queue;
+VkCommandPool    g_commandPool;
 
 void initVulkan() {
+
     VkApplicationInfo app_info ={};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "vk-cholesky";
@@ -20,7 +27,7 @@ void initVulkan() {
     const char* extensions[] ={
         "VK_EXT_debug_report"
     };
-    printf("vulkan init");
+
     // instance
     {
         VkInstanceCreateInfo instance_create_info{};
@@ -59,10 +66,7 @@ void initVulkan() {
         vkGetPhysicalDeviceQueueFamilyProperties(g_physicalDevice, &queue_family_count, queue_family_properties);
         for(uint32_t i=0; i<queue_family_count; i++) {
             if(queue_family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-                // if(queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                     g_queueFamillyIndex = i;
-                    printf( "queue family index: %d", g_queueFamillyIndex );
-                // }
             }
         }
         delete queue_family_properties;
@@ -127,7 +131,6 @@ void Buffer::alloc(const VkMemoryPropertyFlags memPropFlags) {
         }
     }
     vkAllocateMemory(g_device, &info, nullptr, &memory);
-
 }
 
 void Buffer::map(void* _data) {

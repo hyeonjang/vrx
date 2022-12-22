@@ -27,12 +27,12 @@
 // clear to view
 // call function dependency
 // 
-static VkInstance       g_instance;
-static VkPhysicalDevice g_physicalDevice;
+extern VkInstance       g_instance;
+extern VkPhysicalDevice g_physicalDevice;
 extern VkDevice         g_device;
-static uint32_t         g_queueFamillyIndex;
-static VkQueue          g_queue;
-static VkCommandPool    g_commandPool;
+extern uint32_t         g_queueFamillyIndex;
+extern VkQueue          g_queue;
+extern VkCommandPool    g_commandPool;
 
 void initVulkan();
 
