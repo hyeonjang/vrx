@@ -12,6 +12,8 @@ set(
    ./src/vkcholesky.cpp
 )
 
-add_library(vkcholesky ${SOURCE})
+add_library(vkcholesky SHARED ${SOURCE})
 target_include_directories(vkcholesky PUBLIC Vulkan::Headers)
-target_link_libraries(vkcholesky Vulkan::Vulkan)
+target_link_libraries(vkcholesky PUBLIC Vulkan::Vulkan)
+
+install(TARGETS vkcholesky DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
