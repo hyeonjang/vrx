@@ -1,4 +1,4 @@
-#include "vkcholesky.hpp"
+#include "vkcholesky.h"
 
 #include <stdlib.h>
 

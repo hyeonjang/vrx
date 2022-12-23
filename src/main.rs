@@ -2,19 +2,20 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use vx::*;
+#[cxx::bridge]
+mod ffi {
+    unsafe extern "C++" {
+        include!("vkcholesky/src/vkcholesky.h");
+
+        fn initVulkan();
+    }
+}
+
+use cxx;
+use std::env;
+use std::path::PathBuf;
 
 fn main() {
-    //
-    unsafe {
-        initVulkan();
-    }
 
-    // buffer creation
-
-    // descriptor
-
-    // pipeline generation
-
-    // buffer submit
+    ffi::initVulkan();
 }
