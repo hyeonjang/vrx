@@ -49,6 +49,7 @@
 //     bindings.write_to_file(out_path.join("bindings.rs"))
 //             .expect("Couldn't write bindings!");
 // }
+extern crate bindgen;
 
 use cxx_build::CFG;
 use std::env;
@@ -56,25 +57,32 @@ use std::path::{Path, PathBuf};
 
 fn main() {
     
+    // check env
     let vulkan_sdk = env::var("VULKAN_SDK").unwrap();
     let vk_include_path = Path::new(&vulkan_sdk).join("include/");
     CFG.exported_header_dirs.push(&vk_include_path);
     // let vk_layer_path = env::var("VK_LAYER_PATH").unwrap();
 
-    // include vulkan header
-    // let python3 = pkg_config::probe_library("python3").unwrap();
-    // let python_include_paths = python3.include_paths.iter().map(PathBuf::as_path);
-    // CFG.exported_header_dirs.extend(python_include_paths);
+    let bindings = bindgen::Builder::default()
+        .header(vk_include_path.join("vulkan/vulkan.h").to_str().unwrap())
+        .generate()
+        .expect("Unable to generate bindings");
 
-    println!("cargo:rustc-link-lib=vulkan");
-    println!("cargo:rustc-link-search=/home/hyeonjang/vulkan/1.3.204.1/x86_64/lib");
+    // Write the bindings to the $OUT_DIR/bindings.rs file.
+    // let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out_path = PathBuf::from("./src");
+    bindings
+        .write_to_file(out_path.join("bindings.rs"))
+        .expect("Couldn't write bindings!");
 
-    cxx_build::bridge("src/main.rs")
-        .file("src/vkcholesky.cpp")
+    cxx_build::bridge("src/lib.rs")
+        .file("src/vkcholesky.cc")
         .flag_if_supported("-std=c++14")
         .compile("vkcholesky");
 
-    println!("cargo:rustc-link-lib=vkcholesky");
+    println!("cargo:rustc-link-search=/home/hyeonjang/vulkan/1.3.204.1/x86_64/lib");
+    println!("cargo:rustc-link-lib=vulkan");
+
     println!("cargo:rerun-if-changed=src/main.rs");
     println!("cargo:rerun-if-changed=src/vkcholesky.h");
     println!("cargo:rerun-if-changed=src/vkcholesky.cpp");

@@ -1,18 +1,14 @@
 [package]
-build = "build.rs"
 name = "vkcholesky"
 version = "0.1.0"
 edition = "2021"
 links = "vulkan"
 
-[build-dependencies]
-pkg-config = "*"
-cxx-build = "1.0"
-
 [dependencies]
-pkg-config = "*"
-cxx = "1.0"
+cxx = "=1.0.26"
+libc = "0.2.0"
 
-[target.x86_64-unknown-linux-gnu.vkcholesky]
-rustc-link-lib = ["vkcholesky"]
-rustc-link-search = ["OUT_DIR"]
+
+[build-dependencies]
+bindgen = "0.53.1"
+cxx-build = "1.0"
