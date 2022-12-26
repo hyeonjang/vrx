@@ -10,9 +10,12 @@ uint32_t         g_queueFamillyIndex;
 VkQueue          g_queue;
 VkCommandPool    g_commandPool;
 
-void initVulkan() {
-
-    VkApplicationInfo app_info ={};
+// 
+// Context
+// 
+Context::Context()
+:instance(nullptr), physical_devices(nullptr), num_physical_devices(0) {
+    VkApplicationInfo app_info = {};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "vk-cholesky";
     app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -37,26 +40,31 @@ void initVulkan() {
         instance_create_info.ppEnabledLayerNames = layers;
         instance_create_info.enabledExtensionCount = 1;
         instance_create_info.ppEnabledExtensionNames = extensions;
-        // uint32_t glfwExtensionCount = 0;
-        // const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-        // instance_create_info.enabledLayerCount = 0;
-        // instance_create_info.ppEnabledLayerNames = VK_NULL_HANDLE;
-        // instance_create_info.enabledExtensionCount = glfwExtensionCount;
-        // instance_create_info.ppEnabledExtensionNames = glfwExtensions;
-        vkCreateInstance(&instance_create_info, nullptr, &g_instance);
+        vkCreateInstance(&instance_create_info, nullptr, &instance);
     }
 
     // physcial device
     {
-        uint32_t deviceCount = 0;
-        vkEnumeratePhysicalDevices(g_instance, &deviceCount, nullptr);
-
-        VkPhysicalDevice* physical_devices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice)*deviceCount);
-        vkEnumeratePhysicalDevices(g_instance, &deviceCount, physical_devices);
-        g_physicalDevice = physical_devices[0];
-        delete physical_devices;
+        vkEnumeratePhysicalDevices(instance, &num_physical_devices, nullptr);
+        physical_devices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice)*num_physical_devices);
+        vkEnumeratePhysicalDevices(instance, &num_physical_devices, physical_devices);
     }
+}
 
+Context& Context::get() {
+    Context ctx;
+    return ctx;
+}
+
+// 
+// Device
+// 
+Device::Device():self(nullptr),queue(nullptr),queue_family_index(0){};
+std::unique_ptr<Device> Device::new_compute_device() {
+
+    auto& physical_device = Context::get().physical_devices[0];
+    
+    Device* device = new Device();
     // queue family index
     {
         uint32_t queue_family_count = 0;
@@ -66,7 +74,7 @@ void initVulkan() {
         vkGetPhysicalDeviceQueueFamilyProperties(g_physicalDevice, &queue_family_count, queue_family_properties);
         for(uint32_t i=0; i<queue_family_count; i++) {
             if(queue_family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-                    g_queueFamillyIndex = i;
+                    device.queue_family_index = i;
             }
         }
         delete queue_family_properties;
@@ -77,38 +85,41 @@ void initVulkan() {
         float queue_priority = 1.0;
         VkDeviceQueueCreateInfo device_queue_create_info {};
         device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        device_queue_create_info.queueFamilyIndex = g_queueFamillyIndex;
+        device_queue_create_info.queueFamilyIndex = device.queue_family_index;
         device_queue_create_info.queueCount = 1;
         device_queue_create_info.pQueuePriorities = &queue_priority;
         // device_queue_create_info.flags = VkDeviceQueueCreateFlagBits::VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT;
     
         VkPhysicalDeviceFeatures device_features{};
-        VkDeviceCreateInfo device_create_info {};
+        VkDeviceCreateInfo device_create_info{};
         device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_create_info.queueCreateInfoCount = 1;
         device_create_info.pQueueCreateInfos = &device_queue_create_info;
         device_create_info.pEnabledFeatures = &device_features;
         device_create_info.enabledLayerCount = 0;
         device_create_info.enabledExtensionCount = 0;
-        vkCreateDevice(g_physicalDevice, &device_create_info, nullptr, &g_device);
-        vkGetDeviceQueue(g_device, g_queueFamillyIndex, 0, &g_queue);
+
+        vkCreateDevice(physical_device, &device_create_info, nullptr, &device.self);
+        vkGetDeviceQueue(device.self, device.queue_family_index, 0, &device.queue);
     }
 
-    // vk command pool
+    // command pool
     {
         VkCommandPoolCreateInfo cmd_pool_create_info ={};
         cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        cmd_pool_create_info.queueFamilyIndex = g_queueFamillyIndex;
+        cmd_pool_create_info.queueFamilyIndex = device.queue_family_index;
         cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        vkCreateCommandPool(g_device, &cmd_pool_create_info, nullptr, &g_commandPool);
+        vkCreateCommandPool(device.self, &cmd_pool_create_info, nullptr, &command_pool);
     }
+    return std::make_unique(device);
 }
+
 
 // 
 // VxBuffer
 // 
-Buffer::Buffer(const VkBufferCreateInfo info, size_t _size)
-:size(_size) {
+Buffer::Buffer(const VkBufferCreateInfo info, size_t _size, const VkDevice* _p_device)
+:size(_size), p_device(_p_device) {
     vkCreateBuffer(g_device, &info, nullptr, &self);
 }
 

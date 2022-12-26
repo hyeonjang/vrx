@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <memory>
 
 #include <vulkan/vulkan.h>
 
@@ -34,7 +35,35 @@ extern uint32_t         g_queueFamillyIndex;
 extern VkQueue          g_queue;
 extern VkCommandPool    g_commandPool;
 
-void initVulkan();
+struct Context {
+
+public:
+    static Context& get();
+private:
+    Context();
+public:
+    VkInstance          instance;
+    VkPhysicalDevice*   physical_devices; 
+    uint32_t            num_physical_devices; // currently not selectable
+
+};
+
+struct Device {
+
+private:
+    Device();
+
+public:
+    static std::unique_ptr<Device> new_compute_device() const;
+    static std::unique_ptr<Device> new_graphic_device() const = delete; //@@ to implement
+    // create_buffer(const VkBufferCreateInfo info, size_t size);
+
+public:
+    VkDevice        self;
+    VkQueue         queue;
+    uint32_t        queue_family_index;
+    VkCommandPool   command_pool;
+};
 
 struct Buffer {
     VkBuffer            self;
@@ -42,8 +71,9 @@ private:
     VkDeviceMemory      memory;
     void*               data;
     size_t              size;
+    const VkDevice*     p_device;
 public:
-    Buffer(const VkBufferCreateInfo info, size_t size);
+    Buffer(const VkBufferCreateInfo info, size_t size, const VkDevice* p_device);
 private:
     void alloc(const VkMemoryPropertyFlags info);
     void map(void* _data);
