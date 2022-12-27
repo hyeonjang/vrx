@@ -4,13 +4,14 @@
 #![allow(unused)]
 
 mod bindings;
-use cxx::{type_id, ExternType};
+pub use bindings::*;
 
-unsafe impl ExternType for bindings::VkInstance_T {
-    type Id = type_id!("VkInstance_T");
-    type Kind = cxx::kind::Opaque;
+// cxx
+use cxx::*;
+unsafe impl ExternType for bindings::VkBufferCreateInfo {
+    type Id = type_id!("VkBufferCreateInfo");
+    type Kind = cxx::kind::Trivial;
 }
-
 
 #[cxx::bridge]
 pub mod vx {
@@ -19,18 +20,23 @@ pub mod vx {
         include!("vkcholesky/src/vkcholesky.h");
 
         // Vulkan type
-        type VkInstance_T = crate::bindings::VkInstance_T;
-        type VkDevice;
-        type VkBuffer;
-        type VkBufferCreateInfo;
+        type VkBufferCreateInfo = crate::bindings::VkBufferCreateInfo;
 
         // Custom type
         type Context;
+        fn vulkan_context() -> UniquePtr<Context>;
 
         type Device;
-        fn new_compute_device(self:&Device) -> UniquePtr<Device>;
 
+        fn new_compute_device() -> UniquePtr<Device>;
+        fn create_buffer(self:&Device, info:VkBufferCreateInfo, size:usize) -> UniquePtr<Buffer>;
+        // #[Self="Device"]
+        // fn new_compute_device(self:&Device) -> UniquePtr<Device>;
         type Buffer;
+
+        type CommandBuffer;
+        fn begin();
+        fn end();
     }
 }
 
