@@ -6,6 +6,7 @@
 
 #include <vulkan/vulkan.h>
 
+#include <rust/cxx.h>
 // // #include <iostream>
 // // #include <vector>
 
@@ -35,28 +36,47 @@ extern uint32_t         g_queueFamillyIndex;
 extern VkQueue          g_queue;
 extern VkCommandPool    g_commandPool;
 
+struct Context;
+struct Device;
+struct Buffer;
+struct CommandBuffer;
+// 
+// Context
+// 
 struct Context {
 
+private:
+    static std::unique_ptr<Context> ctx;
+
 public:
-    static Context& get();
+    static std::unique_ptr<Context> get();
 private:
     Context();
 public:
     VkInstance          instance;
     VkPhysicalDevice*   physical_devices; 
     uint32_t            num_physical_devices; // currently not selectable
-
 };
 
+inline std::unique_ptr<Context> vulkan_context() {
+    return std::move(Context::get());
+}
+
+// 
+// Device
+// 
 struct Device {
 
 private:
     Device();
 
 public:
-    static std::unique_ptr<Device> new_compute_device() const;
-    static std::unique_ptr<Device> new_graphic_device() const = delete; //@@ to implement
-    // create_buffer(const VkBufferCreateInfo info, size_t size);
+    static std::unique_ptr<Device> new_compute_device();
+    // static std::unique_ptr<Device> new_graphic_device() const = delete; //@@ to implement
+
+    std::unique_ptr<Buffer>         create_buffer(const VkBufferCreateInfo info, size_t size) const;
+    // currenty only one vkcommandbufferallocateinfo
+    std::vector<CommandBuffer>  allocate_command_buffer(const VkCommandBufferAllocateInfo info) const;
 
 public:
     VkDevice        self;
@@ -80,7 +100,14 @@ private:
     void bind();
 };
 
+inline std::unique_ptr<Device> new_compute_device() {
+    return Device::new_compute_device();
+}
+
 struct CommandBuffer {
+
+    CommandBuffer():self(nullptr){};
+
     VkCommandBuffer self;
 
     void begin();

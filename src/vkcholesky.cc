@@ -3,7 +3,6 @@
 #include <stdlib.h>
 
 // global variables
-VkInstance       g_instance;
 VkPhysicalDevice g_physicalDevice;
 VkDevice         g_device;
 uint32_t         g_queueFamillyIndex;
@@ -51,9 +50,13 @@ Context::Context()
     }
 }
 
-Context& Context::get() {
-    Context ctx;
-    return ctx;
+std::unique_ptr<Context> Context::ctx = nullptr;
+
+std::unique_ptr<Context> Context::get() {
+    if(ctx == nullptr) {
+        ctx = std::unique_ptr<Context>(new Context());
+    }
+    return std::move(ctx);
 }
 
 // 
@@ -62,19 +65,19 @@ Context& Context::get() {
 Device::Device():self(nullptr),queue(nullptr),queue_family_index(0){};
 std::unique_ptr<Device> Device::new_compute_device() {
 
-    auto& physical_device = Context::get().physical_devices[0];
+    auto& physical_device = Context::get()->physical_devices[0];
     
     Device* device = new Device();
     // queue family index
     {
         uint32_t queue_family_count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(g_physicalDevice, &queue_family_count, nullptr);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
         
         VkQueueFamilyProperties* queue_family_properties = new VkQueueFamilyProperties[queue_family_count];
-        vkGetPhysicalDeviceQueueFamilyProperties(g_physicalDevice, &queue_family_count, queue_family_properties);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_family_properties);
         for(uint32_t i=0; i<queue_family_count; i++) {
             if(queue_family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-                    device.queue_family_index = i;
+                    device->queue_family_index = i;
             }
         }
         delete queue_family_properties;
@@ -85,7 +88,7 @@ std::unique_ptr<Device> Device::new_compute_device() {
         float queue_priority = 1.0;
         VkDeviceQueueCreateInfo device_queue_create_info {};
         device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        device_queue_create_info.queueFamilyIndex = device.queue_family_index;
+        device_queue_create_info.queueFamilyIndex = device->queue_family_index;
         device_queue_create_info.queueCount = 1;
         device_queue_create_info.pQueuePriorities = &queue_priority;
         // device_queue_create_info.flags = VkDeviceQueueCreateFlagBits::VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT;
@@ -99,49 +102,64 @@ std::unique_ptr<Device> Device::new_compute_device() {
         device_create_info.enabledLayerCount = 0;
         device_create_info.enabledExtensionCount = 0;
 
-        vkCreateDevice(physical_device, &device_create_info, nullptr, &device.self);
-        vkGetDeviceQueue(device.self, device.queue_family_index, 0, &device.queue);
+        vkCreateDevice(physical_device, &device_create_info, nullptr, &device->self);
+        vkGetDeviceQueue(device->self, device->queue_family_index, 0, &device->queue);
     }
 
     // command pool
     {
         VkCommandPoolCreateInfo cmd_pool_create_info ={};
         cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        cmd_pool_create_info.queueFamilyIndex = device.queue_family_index;
+        cmd_pool_create_info.queueFamilyIndex = device->queue_family_index;
         cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        vkCreateCommandPool(device.self, &cmd_pool_create_info, nullptr, &command_pool);
+        vkCreateCommandPool(device->self, &cmd_pool_create_info, nullptr, &device->command_pool);
     }
-    return std::make_unique(device);
+    return std::unique_ptr<Device>(device);
 }
 
+std::unique_ptr<Buffer> Device::create_buffer(const VkBufferCreateInfo info, size_t size) const {
+    auto buffer = std::make_unique<Buffer>(info, size, &self);
+    return buffer;
+}
+
+std::vector<CommandBuffer> Device::allocate_command_buffer(const VkCommandBufferAllocateInfo info) const {
+    
+    // auto cmdBuffer = std::vector<CommandBuffer>(info.commandBufferCount);
+    VkCommandBuffer* cmdBuffers = new VkCommandBuffer[info.commandBufferCount];
+    vkAllocateCommandBuffers(self, &info, cmdBuffers);
+
+    return std::vector<CommandBuffer>((CommandBuffer*)cmdBuffers, (CommandBuffer*)cmdBuffers+info.commandBufferCount);
+}
 
 // 
 // VxBuffer
 // 
 Buffer::Buffer(const VkBufferCreateInfo info, size_t _size, const VkDevice* _p_device)
 :size(_size), p_device(_p_device) {
-    vkCreateBuffer(g_device, &info, nullptr, &self);
+    vkCreateBuffer(*p_device, &info, nullptr, &self);
 }
 
 void Buffer::alloc(const VkMemoryPropertyFlags memPropFlags) {
 
+    //@@ here maybe moved to Context
+    auto& phyiscal_device = Context::get()->physical_devices[0];
     VkPhysicalDeviceMemoryProperties mem_prop;
-    vkGetPhysicalDeviceMemoryProperties(g_physicalDevice, &mem_prop);
-
+    vkGetPhysicalDeviceMemoryProperties(phyiscal_device, &mem_prop);
     VkMemoryRequirements mem_req;
-    vkGetBufferMemoryRequirements(g_device, self, &mem_req);
+    vkGetBufferMemoryRequirements(*p_device, self, &mem_req);
+    
     VkMemoryAllocateInfo info {};
     info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     info.allocationSize = mem_req.size;
 
     for(uint32_t i=0; i<mem_prop.memoryTypeCount; i++) {
         if((mem_req.memoryTypeBits&1)==1) {
-            if((mem_prop.memoryTypes[i].propertyFlags & memPropFlags)==memPropFlags) {
+            if((mem_prop.memoryTypes[i].propertyFlags&memPropFlags) == memPropFlags) {
                 info.memoryTypeIndex = i;
             }
         }
     }
-    vkAllocateMemory(g_device, &info, nullptr, &memory);
+    vkAllocateMemory(*p_device, &info, nullptr, &memory);
 }
 
 void Buffer::map(void* _data) {
