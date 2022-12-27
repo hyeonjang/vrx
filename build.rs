@@ -62,25 +62,25 @@ fn main() {
     let vulkan_sdk = Path::new(&vulkan_sdk);
     let vk_include_path = Path::new(&vulkan_sdk).join("include/");
     CFG.exported_header_dirs.push(&vk_include_path);
-    // let vk_layer_path = env::var("VK_LAYER_PATH").unwrap();
 
+    // rust header bindings
     let bindings = bindgen::Builder::default()
         .header(vulkan_sdk.join("include/vulkan/vulkan.h").to_str().unwrap())
-        .generate()
+        .prepend_enum_name(false)
+        .size_t_is_usize(true).generate()
         .expect("Unable to generate bindings");
-
-    // Write the bindings to the $OUT_DIR/bindings.rs file.
-    // let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let out_path = PathBuf::from("./src");
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 
+    // rust cxx compile
     cxx_build::bridge("src/lib.rs")
         .file("src/vkcholesky.cc")
         .flag_if_supported("-std=c++14")
         .compile("vkcholesky");
 
+    // link
     if cfg!(unix) {
         println!("cargo:rustc-link-search={}", vulkan_sdk.join("lib/").to_str().unwrap());
         println!("cargo:rustc-link-lib=vulkan");
