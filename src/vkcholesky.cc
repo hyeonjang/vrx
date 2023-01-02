@@ -117,9 +117,18 @@ std::unique_ptr<Device> Device::new_compute_device() {
     return std::unique_ptr<Device>(device);
 }
 
-std::unique_ptr<Buffer> Device::create_buffer(const VkBufferCreateInfo info, size_t size) const {
-    auto buffer = std::make_unique<Buffer>(info, size, &self);
+// std::unique_ptr<Buffer> Device::create_buffer(const VkBufferCreateInfo info, size_t size) const {
+//     auto buffer = std::make_unique<Buffer>(info, size, self);
+//     return buffer;
+// }
+
+std::unique_ptr<Buffer> Device::create_buffer(const VkBufferCreateInfo info, size_t size, VkMemoryPropertyFlags flag, void* data) const {
+    auto buffer = std::make_unique<Buffer>(info, size, flag, data, self);
     return buffer;
+}
+
+std::unique_ptr<Descriptor> Device::create_descriptor(size_t size) const {
+    return std::make_unique<Descriptor>(size, &self);
 }
 
 std::vector<CommandBuffer> Device::allocate_command_buffer(const VkCommandBufferAllocateInfo info) const {
@@ -130,23 +139,31 @@ std::vector<CommandBuffer> Device::allocate_command_buffer(const VkCommandBuffer
 
     return std::vector<CommandBuffer>((CommandBuffer*)cmdBuffers, (CommandBuffer*)cmdBuffers+info.commandBufferCount);
 }
+// the end of device
 
 // 
 // VxBuffer
 // 
-Buffer::Buffer(const VkBufferCreateInfo info, size_t _size, const VkDevice* _p_device)
-:size(_size), p_device(_p_device) {
-    vkCreateBuffer(*p_device, &info, nullptr, &self);
+Buffer::Buffer(const VkBufferCreateInfo info, size_t _size, const VkDevice& device_)
+:size(_size), device(device_) {
+    vkCreateBuffer(device, &info, nullptr, &self);
 }
 
-void Buffer::alloc(const VkMemoryPropertyFlags memPropFlags) {
+Buffer::Buffer(const VkBufferCreateInfo info, size_t size, VkMemoryPropertyFlags flag, void* _data, const VkDevice& device_)
+:Buffer(info, size, device_) {
+    this->alloc(flag);
+    this->map(_data);
+    this->bind();
+}
+
+void Buffer::alloc(VkMemoryPropertyFlags memPropFlags) {
 
     //@@ here maybe moved to Context
     auto& phyiscal_device = Context::get()->physical_devices[0];
     VkPhysicalDeviceMemoryProperties mem_prop;
     vkGetPhysicalDeviceMemoryProperties(phyiscal_device, &mem_prop);
     VkMemoryRequirements mem_req;
-    vkGetBufferMemoryRequirements(*p_device, self, &mem_req);
+    vkGetBufferMemoryRequirements(device, self, &mem_req);
     
     VkMemoryAllocateInfo info {};
     info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -159,48 +176,27 @@ void Buffer::alloc(const VkMemoryPropertyFlags memPropFlags) {
             }
         }
     }
-    vkAllocateMemory(*p_device, &info, nullptr, &memory);
+    vkAllocateMemory(device, &info, nullptr, &memory);
 }
 
-void Buffer::map(void* _data) {
-    vkMapMemory(g_device, memory, 0, size, 0, &_data);
+void Buffer::map(void* _data) const {
+    vkMapMemory(device, memory, 0, size, 0, &_data);
     memcpy(_data, data, size);
-    vkUnmapMemory(g_device, memory);
+    vkUnmapMemory(device, memory);
 }
 
 void Buffer::bind() {
-    vkBindBufferMemory(g_device, self, memory, 0);
-}
-
-// 
-// VxCommandBuffer
-// 
-void CommandBuffer::begin() {
-    VkCommandBufferBeginInfo info = {};
-    info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    vkBeginCommandBuffer(self, &info);
-}
-
-void CommandBuffer::end() {
-    vkEndCommandBuffer(self);
-}
-
-void CommandBuffer::copyBuffer(VkBuffer src, VkBuffer dst, uint32_t regionCount, const VkBufferCopy* copy) {
-    vkCmdCopyBuffer(self, src, dst, regionCount, copy);
-}
-
-void CommandBuffer::bindPipeline(VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline) {
-    vkCmdBindPipeline(self, pipelineBindPoint, pipeline);
+    vkBindBufferMemory(device, self, memory, 0);
 }
 
 //
 //
 //
-Descriptor::Descriptor(uint32_t _count)
+Descriptor::Descriptor(uint32_t _count, const VkDevice* device)
 :count(_count),pool(VkDescriptorPool())
-,sets(new VkDescriptorSet[count])
-,setLayouts(new VkDescriptorSetLayout[count]) {
+,sets(new VkDescriptorSet[_count])
+,setLayouts(new VkDescriptorSetLayout[_count])
+,p_device(device) {
 
     this->create_descriptor_pool();
     this->create_descriptor_layout();
@@ -221,7 +217,7 @@ void Descriptor::create_descriptor_pool() {
     createInfo.poolSizeCount = 1;
     createInfo.pPoolSizes = &poolSize;
     createInfo.maxSets = 1;
-    vkCreateDescriptorPool(g_device, &createInfo, nullptr, &pool);
+    vkCreateDescriptorPool(*p_device, &createInfo, nullptr, &pool);
 }
 
 void Descriptor::create_descriptor_layout() {
@@ -235,7 +231,7 @@ void Descriptor::create_descriptor_layout() {
     createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     createInfo.bindingCount = 1;
     createInfo.pBindings = &binding;
-    vkCreateDescriptorSetLayout(g_device, &createInfo, nullptr, setLayouts);
+    vkCreateDescriptorSetLayout(*p_device, &createInfo, nullptr, setLayouts);
 }
 
 void Descriptor::allocate_descriptor_set() {
@@ -244,10 +240,10 @@ void Descriptor::allocate_descriptor_set() {
     desc_set_alloc_info.descriptorPool = pool;
     desc_set_alloc_info.pSetLayouts = setLayouts;
     desc_set_alloc_info.descriptorSetCount = count;
-    vkAllocateDescriptorSets(g_device, &desc_set_alloc_info, sets); 
+    vkAllocateDescriptorSets(*p_device, &desc_set_alloc_info, sets); 
 }
 
-void Descriptor::updateDescriptorSets(const VkDescriptorBufferInfo info, size_t index) {
+void Descriptor::update(const VkDescriptorBufferInfo info, size_t index) const {
 
     if(index > this->count - 1) {
         // runtime error
@@ -261,8 +257,32 @@ void Descriptor::updateDescriptorSets(const VkDescriptorBufferInfo info, size_t 
     write_desc_set.pImageInfo = nullptr;
     write_desc_set.descriptorCount = count;
     write_desc_set.dstBinding = 0;
-    vkUpdateDescriptorSets(g_device, 1, &write_desc_set, 0, NULL);
+    vkUpdateDescriptorSets(*p_device, 1, &write_desc_set, 0, NULL);
 }
+
+// 
+// VxCommandBuffer
+// 
+void CommandBuffer::begin() const {
+    VkCommandBufferBeginInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+    vkBeginCommandBuffer(self, &info);
+}
+
+void CommandBuffer::end() const {
+    vkEndCommandBuffer(self);
+}
+
+void CommandBuffer::copyBuffer(VkBuffer src, VkBuffer dst, uint32_t regionCount, const VkBufferCopy* copy) {
+    vkCmdCopyBuffer(self, src, dst, regionCount, copy);
+}
+
+void CommandBuffer::bindPipeline(VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline) {
+    vkCmdBindPipeline(self, pipelineBindPoint, pipeline);
+}
+
+
 
 //
 // VxComputePipeline

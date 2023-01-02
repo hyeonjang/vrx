@@ -75,10 +75,10 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     // rust cxx compile
-    cxx_build::bridge("src/lib.rs")
-        .file("src/vkcholesky.cc")
-        .flag_if_supported("-std=c++14")
-        .compile("vkcholesky");
+    // cxx_build::bridge("src/lib.rs")
+    //     .file("src/vkcholesky.cc")
+    //     .flag_if_supported("-std=c++14")
+    //     .compile("vkcholesky");
 
     // link
     if cfg!(unix) {

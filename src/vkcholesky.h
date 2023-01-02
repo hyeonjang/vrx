@@ -29,6 +29,8 @@
 // clear to view
 // call function dependency
 // 
+
+
 extern VkInstance       g_instance;
 extern VkPhysicalDevice g_physicalDevice;
 extern VkDevice         g_device;
@@ -36,9 +38,13 @@ extern uint32_t         g_queueFamillyIndex;
 extern VkQueue          g_queue;
 extern VkCommandPool    g_commandPool;
 
+// rust pointer type
+using c_void = void;
+
 struct Context;
 struct Device;
 struct Buffer;
+struct Descriptor;
 struct CommandBuffer;
 // 
 // Context
@@ -74,7 +80,9 @@ public:
     static std::unique_ptr<Device> new_compute_device();
     // static std::unique_ptr<Device> new_graphic_device() const = delete; //@@ to implement
 
-    std::unique_ptr<Buffer>         create_buffer(const VkBufferCreateInfo info, size_t size) const;
+    // std::unique_ptr<Buffer>     create_buffer(const VkBufferCreateInfo info, size_t size) const;
+    std::unique_ptr<Buffer>     create_buffer(const VkBufferCreateInfo info, size_t size, VkMemoryPropertyFlags flag, void* data) const;
+    std::unique_ptr<Descriptor> create_descriptor(size_t size) const;
     // currenty only one vkcommandbufferallocateinfo
     std::vector<CommandBuffer>  allocate_command_buffer(const VkCommandBufferAllocateInfo info) const;
 
@@ -85,24 +93,45 @@ public:
     VkCommandPool   command_pool;
 };
 
+inline std::unique_ptr<Device> new_compute_device() {
+    return Device::new_compute_device();
+}
+
 struct Buffer {
     VkBuffer            self;
 private:
     VkDeviceMemory      memory;
     void*               data;
     size_t              size;
-    const VkDevice*     p_device;
+    const VkDevice&     device;
 public:
-    Buffer(const VkBufferCreateInfo info, size_t size, const VkDevice* p_device);
+    Buffer(const VkBufferCreateInfo info, size_t size, const VkDevice& device);
+    Buffer(const VkBufferCreateInfo info, size_t size, VkMemoryPropertyFlags flag, void* _data, const VkDevice& device);
 private:
-    void alloc(const VkMemoryPropertyFlags info);
-    void map(void* _data);
+    void alloc(VkMemoryPropertyFlags info);
+    void map(void* _data) const;
     void bind();
 };
 
-inline std::unique_ptr<Device> new_compute_device() {
-    return Device::new_compute_device();
-}
+struct Descriptor {
+
+    Descriptor(uint32_t count, const VkDevice* device);
+    ~Descriptor();
+
+    void update(const VkDescriptorBufferInfo info, size_t index) const;
+    void update(const VkDescriptorImageInfo  info, size_t index) const;
+private:
+    void create_descriptor_pool();
+    void create_descriptor_layout();
+    void allocate_descriptor_set();
+public:
+    VkDescriptorPool         pool;
+    VkDescriptorSet*         sets;
+    VkDescriptorSetLayout*   setLayouts;
+    uint32_t                 count;
+private:
+    const VkDevice*          p_device;
+};
 
 struct CommandBuffer {
 
@@ -110,8 +139,8 @@ struct CommandBuffer {
 
     VkCommandBuffer self;
 
-    void begin();
-    void end();
+    void begin() const;
+    void end() const;
 
     void copyBuffer(VkBuffer src, VkBuffer dst, uint32_t regionCount, const VkBufferCopy* copy);
     void bindPipeline(VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline);
@@ -170,23 +199,7 @@ struct CommandBuffer {
     }
 };
 
-struct Descriptor {
 
-    Descriptor(uint32_t count);
-    ~Descriptor();
-
-    void updateDescriptorSets(const VkDescriptorBufferInfo info, size_t index);
-    void updateDescriptorSets(const VkDescriptorImageInfo  info, size_t index);
-private:
-    void create_descriptor_pool();
-    void create_descriptor_layout();
-    void allocate_descriptor_set();
-public:
-    VkDescriptorPool         pool;
-    VkDescriptorSet*         sets;
-    VkDescriptorSetLayout*   setLayouts;
-    uint32_t                 count;
-};
 
 struct ComputePipeline {
 

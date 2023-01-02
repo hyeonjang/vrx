@@ -5,7 +5,7 @@ edition = "2021"
 links = "vulkan"
 
 [dependencies]
-cxx = "=1.0.26"
+cxx = "1.0.85"
 libc = "0.2.0"
 
 
