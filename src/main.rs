@@ -2,8 +2,9 @@ use vkcholesky::*;
 
 use std::ptr::{null};
 
-use crate::vx::c_void;
 fn main() {
+
+    let ctx = Context::new();
     // let device = vx::new_compute_device();
 
     // let info = VkBufferCreateInfo {
