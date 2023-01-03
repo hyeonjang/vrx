@@ -68,6 +68,10 @@ pub fn vk_assert(result:VkResult) {
     assert!(result==0);
 }
 
+pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
+    (major << 22) | (minor << 12) | patch
+}
+
 pub struct Context {
     pub instance : VkInstance,
     pub physical_devices : Vec<VkPhysicalDevice>,
@@ -90,10 +94,10 @@ impl Context {
                 sType: VK_STRUCTURE_TYPE_APPLICATION_INFO,
                 pNext: null(),
                 pApplicationName: ref_app_name.as_ptr(),
-                applicationVersion: 1,
+                applicationVersion: make_version(1, 0, 0),
                 pEngineName: ref_eng_name.as_ptr(),
-                engineVersion: 1,
-                apiVersion: 1,
+                engineVersion: make_version(1, 0, 0),
+                apiVersion: make_version(1, 0, 0),
             };              
             
             // careful to CString lifetime
@@ -116,13 +120,15 @@ impl Context {
             vkEnumerateInstanceLayerProperties(&mut count, instance_layer_prop.as_mut_ptr());
             let layers : Vec<*const i8> = instance_layer_prop.iter().map(|x| x.layerName.as_ptr()).collect();
 
+            println!("instance");
+
             let instance_create_info = VkInstanceCreateInfo {
                 sType: VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                 pNext: null(),
                 flags: 0,
                 pApplicationInfo:  &app_info,
                 enabledLayerCount: 1,
-                ppEnabledLayerNames: layers.as_ptr(),
+                ppEnabledLayerNames: pp_layers.as_ptr(),
                 enabledExtensionCount: 1,
                 ppEnabledExtensionNames: pp_extensions.as_ptr(),
             };
@@ -143,7 +149,6 @@ impl Context {
         unsafe {
             let mut device_count = 0 as u32;
             vk_assert(vkEnumeratePhysicalDevices(instance, &mut device_count, null_mut()));
-
             physical_devices = vec![vk_instantiate!(VkPhysicalDevice); device_count as usize];
             vk_assert(vkEnumeratePhysicalDevices(instance, &mut device_count, physical_devices.as_mut_ptr()));
         }
@@ -206,11 +211,12 @@ impl Device {
             let clt_cmpts:Vec<usize> = qf_props
                 .iter()
                 .enumerate()
-                .filter(|(_i, x)| (x.queueFlags & VK_QUEUE_COMPUTE_BIT) != 0)
+                .filter(|(_i, x)| (x.queueFlags & (VK_QUEUE_COMPUTE_BIT as u32)) != 0)
                 .map(|(i, _x)| i).collect();
             queue_family_index = clt_cmpts[0] as u32;
         }
 
+        println!("device");
         // device
         unsafe {
             let queue_priority = 1.0;
@@ -219,7 +225,7 @@ impl Device {
                 pNext: null(),
                 flags: 0,
                 queueFamilyIndex: queue_family_index,
-                queueCount: 0,
+                queueCount: 1,
                 pQueuePriorities: &queue_priority,
             };
 
@@ -239,6 +245,7 @@ impl Device {
             vkGetDeviceQueue(device, queue_family_index, 0, &mut queue);
         }
 
+        println!("command Pool");
         // command pool
         unsafe {
             let cmd_pool_crt_info = VkCommandPoolCreateInfo {
@@ -325,6 +332,7 @@ impl<'a> Descriptor<'a> {
     pub fn new(count: u32, device:&'a VkDevice) -> Self {
 
         let mut pool = vk_instantiate!(VkDescriptorPool);
+        let mut set_layout = vk_instantiate!(VkDescriptorSetLayout);
         let mut sets = vec![vk_instantiate!(VkDescriptorSet); count as usize];
         let mut set_layouts = vec![vk_instantiate!(VkDescriptorSetLayout); count as usize];
 
@@ -333,7 +341,7 @@ impl<'a> Descriptor<'a> {
         // descriptor pool
         unsafe {
             let desc_pool_size = VkDescriptorPoolSize {
-                type_ : 0,
+                type_ : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 descriptorCount : count,
             };
 
@@ -355,7 +363,7 @@ impl<'a> Descriptor<'a> {
                 binding: 0,
                 descriptorType: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 descriptorCount: count,
-                stageFlags: VK_SHADER_STAGE_COMPUTE_BIT,
+                stageFlags: VK_SHADER_STAGE_COMPUTE_BIT as u32,
                 pImmutableSamplers: null(),
             };
 
@@ -366,9 +374,8 @@ impl<'a> Descriptor<'a> {
                 bindingCount: 1,
                 pBindings: &desc_set_layout_binding,
             };
-            vk_assert(vkCreateDescriptorSetLayout(*device, &desc_set_layout_create_info, null(), set_layouts.as_mut_ptr()));
+            vk_assert(vkCreateDescriptorSetLayout(*device, &desc_set_layout_create_info, null(), &mut set_layout));
         }
-        println!("layouts");
 
         // descriptor set
         unsafe {
@@ -377,12 +384,12 @@ impl<'a> Descriptor<'a> {
                 pNext: null(),
                 descriptorPool: pool,
                 descriptorSetCount: count,
-                pSetLayouts: set_layouts.as_ptr(),
+                pSetLayouts: &set_layout,
             };
             vk_assert(vkAllocateDescriptorSets(*device, &desc_set_allocate_info, sets.as_mut_ptr()));
         }
 
-        Self { device:device, pool:pool, sets:sets, set_layouts:set_layouts, count:count }
+        Self { device:device, pool:pool, sets:sets, set_layouts:vec![set_layout], count:count }
     }
 
     pub fn update(&self, write_desc_set:Vec<VkWriteDescriptorSet>) {

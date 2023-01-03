@@ -59,6 +59,7 @@ fn main() {
     
     // check env
     let vulkan_sdk = env::var("VULKAN_SDK").unwrap();
+
     let vulkan_sdk = Path::new(&vulkan_sdk);
     let vk_include_path = Path::new(&vulkan_sdk).join("include/");
     CFG.exported_header_dirs.push(&vk_include_path);
