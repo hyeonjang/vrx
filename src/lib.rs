@@ -6,17 +6,17 @@
 include!("bindings.rs");
 // include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-use std::ptr::*;
 use std::ffi::*;
-use std::str::*;
 use std::mem::MaybeUninit;
+use std::ptr::*;
+use std::str::*;
 use std::sync::{Mutex, Once};
 
 macro_rules! vk_default {
     ( $x:ident ) => {
         impl Default for $x {
             fn default() -> $x {
-                $x { _unused : [0;0] }
+                $x { _unused: [0; 0] }
             }
         }
     };
@@ -24,18 +24,23 @@ macro_rules! vk_default {
 
 #[macro_export]
 macro_rules! vk_instantiate {
-    ( $x:ident ) => {
-        {
-            use paste::paste;
+    ( $x:ident ) => {{
+        use paste::paste;
 
-            paste! {
-                let mut type_T = [<$x _T>]::default();
-                let mut type_inst : *mut [<$x _T>] = &mut type_T;
-            }
-
-            type_inst
+        paste! {
+            let mut type_T = [<$x _T>]::default();
+            let mut type_inst : *mut [<$x _T>] = &mut type_T;
         }
-    };
+
+        type_inst
+    }};
+}
+
+#[macro_export]
+macro_rules! load_spv {
+    ( $x:tt ) => {{
+        include_bytes!(x)
+    }};
 }
 
 vk_default!(VkBuffer_T);
@@ -64,8 +69,8 @@ vk_default!(VkDescriptorPool_T);
 vk_default!(VkFramebuffer_T);
 vk_default!(VkCommandPool_T);
 
-pub fn vk_assert(result:VkResult) {
-    assert!(result==0);
+pub fn vk_assert(result: VkResult) {
+    assert!(result == 0);
 }
 
 pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
@@ -73,13 +78,12 @@ pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
 }
 
 pub struct Context {
-    pub instance : VkInstance,
-    pub physical_devices : Vec<VkPhysicalDevice>,
+    pub instance: VkInstance,
+    pub physical_devices: Vec<VkPhysicalDevice>,
 }
 
 impl Context {
     pub fn new() -> Self {
-
         let mut instance = vk_instantiate!(VkInstance);
         let mut physical_devices = vec![];
 
@@ -98,8 +102,8 @@ impl Context {
                 pEngineName: ref_eng_name.as_ptr(),
                 engineVersion: make_version(1, 0, 0),
                 apiVersion: make_version(1, 0, 0),
-            };              
-            
+            };
+
             // careful to CString lifetime
             let layers = CString::new("VK_LAYER_KHRONOS_validation").unwrap();
             let ref_layers = &layers;
@@ -108,17 +112,20 @@ impl Context {
             let ref_extensions = &extensions;
             let pp_extensions = vec![ref_extensions.as_ptr()];
 
-            let mut count:u32 = 10;
+            let mut count: u32 = 10;
             let mut layer_prop = VkLayerProperties {
-                layerName: [0;256],
+                layerName: [0; 256],
                 specVersion: 0,
                 implementationVersion: 0,
-                description: [0;256],
+                description: [0; 256],
             };
 
-            let mut instance_layer_prop = vec![layer_prop;count as usize];
+            let mut instance_layer_prop = vec![layer_prop; count as usize];
             vkEnumerateInstanceLayerProperties(&mut count, instance_layer_prop.as_mut_ptr());
-            let layers : Vec<*const i8> = instance_layer_prop.iter().map(|x| x.layerName.as_ptr()).collect();
+            let layers: Vec<*const i8> = instance_layer_prop
+                .iter()
+                .map(|x| x.layerName.as_ptr())
+                .collect();
 
             println!("instance");
 
@@ -126,34 +133,49 @@ impl Context {
                 sType: VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                 pNext: null(),
                 flags: 0,
-                pApplicationInfo:  &app_info,
+                pApplicationInfo: &app_info,
                 enabledLayerCount: 1,
                 ppEnabledLayerNames: pp_layers.as_ptr(),
                 enabledExtensionCount: 1,
                 ppEnabledExtensionNames: pp_extensions.as_ptr(),
             };
-            vk_assert(vkCreateInstance(&instance_create_info, null(), &mut instance));
+            vk_assert(vkCreateInstance(
+                &instance_create_info,
+                null(),
+                &mut instance,
+            ));
 
-            let mut count:u32 = 3;
+            let mut count: u32 = 3;
             let mut layer_prop = VkLayerProperties {
-                layerName: [0;256],
+                layerName: [0; 256],
                 specVersion: 0,
                 implementationVersion: 0,
-                description: [0;256],
+                description: [0; 256],
             };
 
-            let mut instance_layer_prop = vec![layer_prop;count as usize];
+            let mut instance_layer_prop = vec![layer_prop; count as usize];
             vkEnumerateInstanceLayerProperties(&mut count, instance_layer_prop.as_mut_ptr());
         }
         // phyiscal device
         unsafe {
             let mut device_count = 0 as u32;
-            vk_assert(vkEnumeratePhysicalDevices(instance, &mut device_count, null_mut()));
+            vk_assert(vkEnumeratePhysicalDevices(
+                instance,
+                &mut device_count,
+                null_mut(),
+            ));
             physical_devices = vec![vk_instantiate!(VkPhysicalDevice); device_count as usize];
-            vk_assert(vkEnumeratePhysicalDevices(instance, &mut device_count, physical_devices.as_mut_ptr()));
+            vk_assert(vkEnumeratePhysicalDevices(
+                instance,
+                &mut device_count,
+                physical_devices.as_mut_ptr(),
+            ));
         }
-        
-        Self { instance:instance, physical_devices:physical_devices } 
+
+        Self {
+            instance: instance,
+            physical_devices: physical_devices,
+        }
     }
 }
 
@@ -168,51 +190,61 @@ fn vulkan_context() -> &'static Context {
     static ONCE: Once = Once::new();
 
     ONCE.call_once(|| unsafe {
-        CTX.as_mut_ptr().write(
-            Context::new()
-        );
+        CTX.as_mut_ptr().write(Context::new());
     });
 
     unsafe { &*CTX.as_ptr() }
 }
 
 pub struct Device {
-    pub self_ : VkDevice,
-    pub queue : VkQueue,
-    pub queue_family_index : u32,
-    pub command_pool : VkCommandPool,
+    pub self_: VkDevice,
+    pub queue: VkQueue,
+    pub queue_family_index: u32,
+    pub command_pool: VkCommandPool,
 }
 
 impl Device {
     pub fn new() -> Self {
         let mut device = vk_instantiate!(VkDevice);
         let mut queue = vk_instantiate!(VkQueue);
-        let mut queue_family_index:u32 = 0;
+        let mut queue_family_index: u32 = 0;
         let mut command_pool = vk_instantiate!(VkCommandPool);
 
         let ctx = vulkan_context();
 
         // queue family index
         unsafe {
-
             let mut qf_count = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(ctx.physical_devices[0], &mut qf_count, null_mut());
+            vkGetPhysicalDeviceQueueFamilyProperties(
+                ctx.physical_devices[0],
+                &mut qf_count,
+                null_mut(),
+            );
 
             // dummy
-            let qf_prop_inst = VkQueueFamilyProperties { 
-                queueFlags: 0, 
-                queueCount: 0, 
-                timestampValidBits: 0, 
-                minImageTransferGranularity: VkExtent3D { width: 0, height: 0, depth: 0 }, 
+            let qf_prop_inst = VkQueueFamilyProperties {
+                queueFlags: 0,
+                queueCount: 0,
+                timestampValidBits: 0,
+                minImageTransferGranularity: VkExtent3D {
+                    width: 0,
+                    height: 0,
+                    depth: 0,
+                },
             };
-            let mut qf_props = vec![qf_prop_inst;qf_count as usize];
-            vkGetPhysicalDeviceQueueFamilyProperties(ctx.physical_devices[0], &mut qf_count, qf_props.as_mut_ptr());
+            let mut qf_props = vec![qf_prop_inst; qf_count as usize];
+            vkGetPhysicalDeviceQueueFamilyProperties(
+                ctx.physical_devices[0],
+                &mut qf_count,
+                qf_props.as_mut_ptr(),
+            );
 
-            let clt_cmpts:Vec<usize> = qf_props
+            let clt_cmpts: Vec<usize> = qf_props
                 .iter()
                 .enumerate()
                 .filter(|(_i, x)| (x.queueFlags & (VK_QUEUE_COMPUTE_BIT as u32)) != 0)
-                .map(|(i, _x)| i).collect();
+                .map(|(i, _x)| i)
+                .collect();
             queue_family_index = clt_cmpts[0] as u32;
         }
 
@@ -241,11 +273,15 @@ impl Device {
                 ppEnabledExtensionNames: null(),
                 pEnabledFeatures: null(),
             };
-            vk_assert(vkCreateDevice(ctx.physical_devices[0], &dvc_crt_info, null(), &mut device));
+            vk_assert(vkCreateDevice(
+                ctx.physical_devices[0],
+                &dvc_crt_info,
+                null(),
+                &mut device,
+            ));
             vkGetDeviceQueue(device, queue_family_index, 0, &mut queue);
         }
 
-        println!("command Pool");
         // command pool
         unsafe {
             let cmd_pool_crt_info = VkCommandPoolCreateInfo {
@@ -254,31 +290,104 @@ impl Device {
                 flags: 0,
                 queueFamilyIndex: queue_family_index,
             };
-            vk_assert(vkCreateCommandPool(device, &cmd_pool_crt_info, null(), &mut command_pool));
+            vk_assert(vkCreateCommandPool(
+                device,
+                &cmd_pool_crt_info,
+                null(),
+                &mut command_pool,
+            ));
         }
 
-        Self { self_:device, queue:queue, queue_family_index:queue_family_index, command_pool:command_pool }
+        Self {
+            self_: device,
+            queue: queue,
+            queue_family_index: queue_family_index,
+            command_pool: command_pool,
+        }
+    }
+
+    pub fn create_shader_module(&self, code: &[u8]) -> VkShaderModule {
+        let mut module = vk_instantiate!(VkShaderModule);
+
+        unsafe {
+            let (prefix, code_u32, suffix) = code.align_to::<u32>();
+
+            let shader_create_info = VkShaderModuleCreateInfo {
+                sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                pNext: null(),
+                flags: 0,
+                codeSize: code.len(),
+                pCode: code_u32.as_ptr(),
+            };
+
+            vkCreateShaderModule(self.self_, &shader_create_info, null(), &mut module);
+        }
+        module
+    }
+
+    pub fn allocate_command_buffer(&self, level: VkCommandBufferLevel) -> VkCommandBuffer {
+        let mut cmd_buf = vk_instantiate!(VkCommandBuffer);
+
+        let info = VkCommandBufferAllocateInfo {
+            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            pNext: null(),
+            commandPool: self.command_pool,
+            level: level,
+            commandBufferCount: 1,
+        };
+        unsafe {
+            vk_assert(vkAllocateCommandBuffers(self.self_, &info, &mut cmd_buf));
+        }
+        cmd_buf
+    }
+
+    pub fn allocate_command_buffers(
+        &self,
+        level: VkCommandBufferLevel,
+        count: u32,
+    ) -> Vec<VkCommandBuffer> {
+        let mut cmd_bufs = vec![vk_instantiate!(VkCommandBuffer); count as usize];
+
+        let info = VkCommandBufferAllocateInfo {
+            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            pNext: null(),
+            commandPool: self.command_pool,
+            level: level,
+            commandBufferCount: count,
+        };
+
+        unsafe {
+            vk_assert(vkAllocateCommandBuffers(
+                self.self_,
+                &info,
+                cmd_bufs.as_mut_ptr(),
+            ));
+        }
+        cmd_bufs
     }
 }
 
 pub struct Buffer<'a, T> {
-    device : &'a VkDevice,
-    self_ : VkBuffer,
-    memory : VkDeviceMemory,
-    data : Vec<T>,
+    device: &'a VkDevice,
+    self_: VkBuffer,
+    memory: VkDeviceMemory,
+    data: Vec<T>,
 }
 
 impl<'a, T> Buffer<'a, T> {
-
-    pub fn new(info:VkBufferCreateInfo, data:Vec<T>, device:&'a VkDevice) -> Self {
-        
+    pub fn new(info: VkBufferCreateInfo, data: Vec<T>, device: &'a VkDevice) -> Self {
         let mut buf = vk_instantiate!(VkBuffer);
         let mem = vk_instantiate!(VkDeviceMemory);
         unsafe {
             vk_assert(vkCreateBuffer(*device, &info, null(), &mut buf));
         }
 
-        Self { self_:buf, memory:mem, data:data, device:device }
+        Self {
+            self_: buf,
+            memory: mem,
+            data: data,
+            device: device,
+        }
     }
 
     pub fn alloc(&mut self, mem_prop_flags: VkMemoryPropertyFlags) {
@@ -287,9 +396,12 @@ impl<'a, T> Buffer<'a, T> {
             // dummy
             let mut mem_prop = VkPhysicalDeviceMemoryProperties {
                 memoryTypeCount: 0,
-                memoryTypes: [VkMemoryType{ propertyFlags: 0, heapIndex: 0 };32],
+                memoryTypes: [VkMemoryType {
+                    propertyFlags: 0,
+                    heapIndex: 0,
+                }; 32],
                 memoryHeapCount: 0,
-                memoryHeaps: [VkMemoryHeap{ size: 0, flags: 0 };16],
+                memoryHeaps: [VkMemoryHeap { size: 0, flags: 0 }; 16],
             };
             vkGetPhysicalDeviceMemoryProperties(ctx.physical_devices[0], &mut mem_prop);
 
@@ -308,19 +420,26 @@ impl<'a, T> Buffer<'a, T> {
             };
 
             for i in 0..mem_prop.memoryTypeCount {
-                if mem_req.memoryTypeBits&1 == 1 {
-                    if mem_prop.memoryTypes[i as usize].propertyFlags&mem_prop_flags == mem_prop_flags {
+                if mem_req.memoryTypeBits & 1 == 1 {
+                    if mem_prop.memoryTypes[i as usize].propertyFlags & mem_prop_flags
+                        == mem_prop_flags
+                    {
                         mem_alloc_info.memoryTypeIndex = i;
                     }
                 }
             }
-            vk_assert(vkAllocateMemory(*self.device, &mut mem_alloc_info, null(), &mut self.memory));
+            vk_assert(vkAllocateMemory(
+                *self.device,
+                &mut mem_alloc_info,
+                null(),
+                &mut self.memory,
+            ));
         }
     }
 }
 
 pub struct Descriptor<'a> {
-    device : &'a VkDevice,
+    device: &'a VkDevice,
     pool: VkDescriptorPool,
     pub sets: Vec<VkDescriptorSet>,
     pub set_layouts: Vec<VkDescriptorSetLayout>,
@@ -328,21 +447,17 @@ pub struct Descriptor<'a> {
 }
 
 impl<'a> Descriptor<'a> {
-
-    pub fn new(count: u32, device:&'a VkDevice) -> Self {
-
+    pub fn new(count: u32, device: &'a VkDevice) -> Self {
         let mut pool = vk_instantiate!(VkDescriptorPool);
         let mut set_layout = vk_instantiate!(VkDescriptorSetLayout);
         let mut sets = vec![vk_instantiate!(VkDescriptorSet); count as usize];
         let mut set_layouts = vec![vk_instantiate!(VkDescriptorSetLayout); count as usize];
 
-        println!("init");
-
         // descriptor pool
         unsafe {
             let desc_pool_size = VkDescriptorPoolSize {
-                type_ : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                descriptorCount : count,
+                type_: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                descriptorCount: count,
             };
 
             let desc_pool_create_info = VkDescriptorPoolCreateInfo {
@@ -352,10 +467,14 @@ impl<'a> Descriptor<'a> {
                 maxSets: 1,
                 poolSizeCount: 1,
                 pPoolSizes: &desc_pool_size,
-            }; 
-            vk_assert(vkCreateDescriptorPool(*device, &desc_pool_create_info, null(), &mut pool));
+            };
+            vk_assert(vkCreateDescriptorPool(
+                *device,
+                &desc_pool_create_info,
+                null(),
+                &mut pool,
+            ));
         }
-        println!("pool");
 
         // descriptor layout
         unsafe {
@@ -374,7 +493,12 @@ impl<'a> Descriptor<'a> {
                 bindingCount: 1,
                 pBindings: &desc_set_layout_binding,
             };
-            vk_assert(vkCreateDescriptorSetLayout(*device, &desc_set_layout_create_info, null(), &mut set_layout));
+            vk_assert(vkCreateDescriptorSetLayout(
+                *device,
+                &desc_set_layout_create_info,
+                null(),
+                &mut set_layout,
+            ));
         }
 
         // descriptor set
@@ -386,30 +510,37 @@ impl<'a> Descriptor<'a> {
                 descriptorSetCount: count,
                 pSetLayouts: &set_layout,
             };
-            vk_assert(vkAllocateDescriptorSets(*device, &desc_set_allocate_info, sets.as_mut_ptr()));
+            vk_assert(vkAllocateDescriptorSets(
+                *device,
+                &desc_set_allocate_info,
+                sets.as_mut_ptr(),
+            ));
         }
 
-        Self { device:device, pool:pool, sets:sets, set_layouts:vec![set_layout], count:count }
+        Self {
+            device: device,
+            pool: pool,
+            sets: sets,
+            set_layouts: vec![set_layout],
+            count: count,
+        }
     }
 
-    pub fn update(&self, write_desc_set:Vec<VkWriteDescriptorSet>) {
+    pub fn update(&self, write_desc_set: Vec<VkWriteDescriptorSet>) {
         unsafe {
             vkUpdateDescriptorSets(
-                *self.device, 
-                write_desc_set.len() as u32, 
-                write_desc_set.as_ptr(), 
-                0, null());
+                *self.device,
+                write_desc_set.len() as u32,
+                write_desc_set.as_ptr(),
+                0,
+                null(),
+            );
         }
     }
 }
 
 pub struct CommandBuffer {
     self_: VkCommandBuffer,
-}
-
-pub struct ComputePipeline {
-    self_: VkPipeline,
-    layout : VkPipelineLayout,
 }
 
 #[cfg(test)]
@@ -421,5 +552,4 @@ mod tests {
     fn t_context() {
         let ctx = Context::new();
     }
-
 }

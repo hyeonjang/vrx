@@ -1,20 +1,20 @@
-use vkcholesky::*;
-use std::ptr::*;
 use std::env;
+use std::ffi::*;
+use std::ptr::*;
+use vkcholesky::*;
+
+const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 
 fn main() {
     let vk_layer_path = env::var("VULKAN_SDK").unwrap();
     println!("{:?}", vk_layer_path);
 
     let device = Device::new();
-    println!("device");
-    println!("descriptor");
-    
     let descriptor = Descriptor::new(1, &device.self_);
 
-    println!("device");
     // compute pipeline
-    unsafe {
+    let mut pipeline = vk_instantiate!(VkPipeline);
+    {
         let mut pipeline_cache = vk_instantiate!(VkPipelineCache);
         let pipeline_cache_create_info = VkPipelineCacheCreateInfo {
             sType: VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
@@ -23,7 +23,14 @@ fn main() {
             initialDataSize: 0,
             pInitialData: null(),
         };
-        vk_assert(vkCreatePipelineCache(device.self_, &pipeline_cache_create_info, null(), &mut pipeline_cache));
+        unsafe {
+            vk_assert(vkCreatePipelineCache(
+                device.self_,
+                &pipeline_cache_create_info,
+                null(),
+                &mut pipeline_cache,
+            ));
+        }
 
         let mut pipeline_layout = vk_instantiate!(VkPipelineLayout);
         let pipeline_layout_create_info = VkPipelineLayoutCreateInfo {
@@ -35,29 +42,50 @@ fn main() {
             pushConstantRangeCount: 0,
             pPushConstantRanges: null(),
         };
-        vk_assert(vkCreatePipelineLayout(device.self_, &pipeline_layout_create_info, null(), &mut pipeline_layout));
+        unsafe {
+            vk_assert(vkCreatePipelineLayout(
+                device.self_,
+                &pipeline_layout_create_info,
+                null(),
+                &mut pipeline_layout,
+            ));
+        }
+
+        let name = CString::new("main").unwrap();
+        let ref_name = &name;
 
         // pipeline
-        let mut pipeline = vk_instantiate!(VkPipeline);
         let pipeline_stage_create_info = VkPipelineShaderStageCreateInfo {
             sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             pNext: null(),
             flags: 0,
-            stage: todo!(),
-            module: todo!(),
-            pName: todo!(),
-            pSpecializationInfo: todo!(),
+            stage: VK_SHADER_STAGE_COMPUTE_BIT,
+            module: device.create_shader_module(COMP_SPV),
+            pName: ref_name.as_ptr() as *const i8,
+            pSpecializationInfo: null(),
         };
 
         let compute_pipeline_create_info = VkComputePipelineCreateInfo {
             sType: VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
             pNext: null(),
             flags: 0,
-            stage: todo!(),
+            stage: pipeline_stage_create_info,
             layout: pipeline_layout,
-            basePipelineHandle: todo!(),
-            basePipelineIndex: todo!(),
+            basePipelineHandle: null_mut(),
+            basePipelineIndex: 0,
         };
-        // vk_assert(vkCreateComputePipelines(device));
+        unsafe {
+            vk_assert(vkCreateComputePipelines(
+                device.self_,
+                pipeline_cache,
+                1,
+                &compute_pipeline_create_info,
+                null(),
+                &mut pipeline,
+            ));
+        }
     }
+
+    let cmd = device.allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+    {}
 }

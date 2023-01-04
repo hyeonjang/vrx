@@ -13,7 +13,7 @@
 // // 1. from ./build path to absolute
 
 // fn main() {
-    
+
 //     // check vulkan
 //     // Vulkan_SDK
 //     // VK_LAYER_PATH
@@ -56,7 +56,6 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 fn main() {
-    
     // check env
     let vulkan_sdk = env::var("VULKAN_SDK").unwrap();
 
@@ -68,7 +67,8 @@ fn main() {
     let bindings = bindgen::Builder::default()
         .header(vulkan_sdk.join("include/vulkan/vulkan.h").to_str().unwrap())
         .prepend_enum_name(false)
-        .size_t_is_usize(true).generate()
+        .size_t_is_usize(true)
+        .generate()
         .expect("Unable to generate bindings");
     let out_path = PathBuf::from("./src");
     bindings
@@ -83,12 +83,18 @@ fn main() {
 
     // link
     if cfg!(unix) {
-        println!("cargo:rustc-link-search={}", vulkan_sdk.join("lib/").to_str().unwrap());
+        println!(
+            "cargo:rustc-link-search={}",
+            vulkan_sdk.join("lib/").to_str().unwrap()
+        );
         println!("cargo:rustc-link-lib=vulkan");
     } else if cfg!(windows) {
-        println!("cargo:rustc-link-search={}", vulkan_sdk.join("Lib/").to_str().unwrap());
+        println!(
+            "cargo:rustc-link-search={}",
+            vulkan_sdk.join("Lib/").to_str().unwrap()
+        );
         println!("cargo:rustc-link-lib=vulkan-1");
-    } 
+    }
     println!("cargo:rerun-if-changed=src/main.rs");
     println!("cargo:rerun-if-changed=src/vkcholesky.h");
     println!("cargo:rerun-if-changed=src/vkcholesky.cc");
