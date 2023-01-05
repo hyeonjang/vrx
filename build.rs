@@ -68,6 +68,7 @@ fn main() {
         .header(vulkan_sdk.join("include/vulkan/vulkan.h").to_str().unwrap())
         .prepend_enum_name(false)
         .size_t_is_usize(true)
+        .rustified_enum("VkResult")
         .generate()
         .expect("Unable to generate bindings");
     let out_path = PathBuf::from("./src");

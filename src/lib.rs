@@ -11,6 +11,7 @@ use std::mem::MaybeUninit;
 use std::ptr::*;
 use std::str::*;
 use std::sync::{Mutex, Once};
+use anyhow::*;
 
 macro_rules! vk_default {
     ( $x:ident ) => {
@@ -70,7 +71,7 @@ vk_default!(VkFramebuffer_T);
 vk_default!(VkCommandPool_T);
 
 pub fn vk_assert(result: VkResult) {
-    assert!(result == 0);
+    assert!(result == VkResult::VK_SUCCESS, "VkResult: {:?}", result);
 }
 
 pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
@@ -306,11 +307,15 @@ impl Device {
         }
     }
 
-    pub fn create_shader_module(&self, code: &[u8]) -> VkShaderModule {
+    pub fn create_shader_module(&self, code: &[u8]) -> Result<VkShaderModule> {
         let mut module = vk_instantiate!(VkShaderModule);
 
         unsafe {
+            let code = Vec::<u8>::from(code);
             let (prefix, code_u32, suffix) = code.align_to::<u32>();
+            if !prefix.is_empty() || !suffix.is_empty() {
+                return Err(anyhow!("Load code for module failed"));
+            }
 
             let shader_create_info = VkShaderModuleCreateInfo {
                 sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -320,12 +325,14 @@ impl Device {
                 pCode: code_u32.as_ptr(),
             };
 
-            vkCreateShaderModule(self.self_, &shader_create_info, null(), &mut module);
+            vk_assert(
+                vkCreateShaderModule(self.self_, &shader_create_info, null(), &mut module)
+            );
         }
-        module
+        Ok(module)
     }
 
-    pub fn allocate_command_buffer(&self, level: VkCommandBufferLevel) -> VkCommandBuffer {
+    pub fn allocate_command_buffer(&self, level: VkCommandBufferLevel) -> Result<VkCommandBuffer> {
         let mut cmd_buf = vk_instantiate!(VkCommandBuffer);
 
         let info = VkCommandBufferAllocateInfo {
@@ -338,14 +345,14 @@ impl Device {
         unsafe {
             vk_assert(vkAllocateCommandBuffers(self.self_, &info, &mut cmd_buf));
         }
-        cmd_buf
+        Ok(cmd_buf)
     }
 
     pub fn allocate_command_buffers(
         &self,
         level: VkCommandBufferLevel,
         count: u32,
-    ) -> Vec<VkCommandBuffer> {
+    ) -> Result<Vec<VkCommandBuffer>> {
         let mut cmd_bufs = vec![vk_instantiate!(VkCommandBuffer); count as usize];
 
         let info = VkCommandBufferAllocateInfo {
@@ -363,7 +370,7 @@ impl Device {
                 cmd_bufs.as_mut_ptr(),
             ));
         }
-        cmd_bufs
+        Ok(cmd_bufs)
     }
 }
 

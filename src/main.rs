@@ -1,11 +1,12 @@
 use std::env;
 use std::ffi::*;
 use std::ptr::*;
+use anyhow::*;
 use vkcholesky::*;
 
 const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 
-fn main() {
+fn main() -> Result<()> {
     let vk_layer_path = env::var("VULKAN_SDK").unwrap();
     println!("{:?}", vk_layer_path);
 
@@ -60,11 +61,12 @@ fn main() {
             pNext: null(),
             flags: 0,
             stage: VK_SHADER_STAGE_COMPUTE_BIT,
-            module: device.create_shader_module(COMP_SPV),
+            module: device.create_shader_module(COMP_SPV).unwrap(),
             pName: ref_name.as_ptr() as *const i8,
             pSpecializationInfo: null(),
         };
 
+        println!("pipeline");
         let compute_pipeline_create_info = VkComputePipelineCreateInfo {
             sType: VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
             pNext: null(),
@@ -84,8 +86,34 @@ fn main() {
                 &mut pipeline,
             ));
         }
+        println!("here");
     }
 
-    let cmd = device.allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-    {}
+    // commands
+    let cmd = device.allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY).unwrap();
+    {
+        let begin_info = VkCommandBufferBeginInfo {
+            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            pNext: null(),
+            flags: 0,
+            pInheritanceInfo: null(),
+        };
+        unsafe {        
+            vkBeginCommandBuffer(cmd, &begin_info);
+        }
+
+        let buf_barrier = VkBufferMemoryBarrier {
+            sType: VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            pNext: null(),
+            srcAccessMask: todo!(),
+            dstAccessMask: todo!(),
+            srcQueueFamilyIndex: todo!(),
+            dstQueueFamilyIndex: todo!(),
+            buffer: todo!(),
+            offset: todo!(),
+            size: todo!(),
+        };
+    }
+
+    Ok(())
 }
