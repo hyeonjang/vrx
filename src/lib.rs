@@ -11,9 +11,24 @@ use std::mem::MaybeUninit;
 use std::ptr::*;
 use std::str::*;
 use std::sync::{Mutex, Once};
+use std::any::{type_name, Any};
+
+use paste::paste;
+use regex::{Regex, RegexSet};
 use anyhow::*;
 
-macro_rules! vk_default {
+use phf::phf_map;
+
+pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf_map! {
+    "VkCommandBufferBeginInfo" => VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    "VkSubmitInfo" => VK_STRUCTURE_TYPE_SUBMIT_INFO,
+    "VkFenceCreateInfo" => VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    "VkPipelineCacheCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+    "VkPipelineLayoutCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    "VkComputePipelineCreateInfo" => VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+};
+
+macro_rules! impl_default_vk_pointer_t {
     ( $x:ident ) => {
         impl Default for $x {
             fn default() -> $x {
@@ -21,6 +36,56 @@ macro_rules! vk_default {
             }
         }
     };
+}
+
+macro_rules! impl_vk_info_builder {
+    ( $type_:ty, $($field:ident: $field_type:ty $(,)?)* ) => {
+
+        paste! {
+            // builder contain info structure
+            pub struct [<$type_ Builder>] {
+                info: $type_,
+            }
+
+            impl [<$type_ Builder>] {
+                pub fn new() -> [<$type_ Builder>] {
+                    let mut builder = [<$type_ Builder>] {
+                        info:$type_::default()
+                    };
+
+                    let type_string = stringify!($type_);
+                    let sType = STRUCTURE_TYPE_CREATE_INFO_MAP.get(type_string);
+                    if let Some(x) = sType {
+                        builder.info.sType = *sType.unwrap();
+                    } else {
+                        panic!("No mapped structure type for {}, please insert", type_string);
+                    }
+
+                    builder
+                }
+
+                pub fn build(self) -> $type_ {
+                    // ?error checking is possible
+
+                    self.info
+                }
+
+                $(
+                    pub fn $field(mut self, $field:$field_type) -> [<$type_ Builder>] {
+                        self.info.$field = $field;
+                        self
+                    }
+                )*
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! load_spv {
+    ( $x:tt ) => {{
+        include_bytes!(x)
+    }};
 }
 
 #[macro_export]
@@ -37,38 +102,76 @@ macro_rules! vk_instantiate {
     }};
 }
 
-#[macro_export]
-macro_rules! load_spv {
-    ( $x:tt ) => {{
-        include_bytes!(x)
-    }};
-}
+impl_default_vk_pointer_t!(VkBuffer_T);
+impl_default_vk_pointer_t!(VkImage_T);
+impl_default_vk_pointer_t!(VkInstance_T);
+impl_default_vk_pointer_t!(VkPhysicalDevice_T);
+impl_default_vk_pointer_t!(VkDevice_T);
+impl_default_vk_pointer_t!(VkQueue_T);
+impl_default_vk_pointer_t!(VkSemaphore_T);
+impl_default_vk_pointer_t!(VkCommandBuffer_T);
+impl_default_vk_pointer_t!(VkFence_T);
+impl_default_vk_pointer_t!(VkDeviceMemory_T);
+impl_default_vk_pointer_t!(VkEvent_T);
+impl_default_vk_pointer_t!(VkQueryPool_T);
+impl_default_vk_pointer_t!(VkBufferView_T);
+impl_default_vk_pointer_t!(VkImageView_T);
+impl_default_vk_pointer_t!(VkShaderModule_T);
+impl_default_vk_pointer_t!(VkPipelineCache_T);
+impl_default_vk_pointer_t!(VkPipelineLayout_T);
+impl_default_vk_pointer_t!(VkPipeline_T);
+impl_default_vk_pointer_t!(VkRenderPass_T);
+impl_default_vk_pointer_t!(VkDescriptorSetLayout_T);
+impl_default_vk_pointer_t!(VkSampler_T);
+impl_default_vk_pointer_t!(VkDescriptorSet_T);
+impl_default_vk_pointer_t!(VkDescriptorPool_T);
+impl_default_vk_pointer_t!(VkFramebuffer_T);
+impl_default_vk_pointer_t!(VkCommandPool_T);
 
-vk_default!(VkBuffer_T);
-vk_default!(VkImage_T);
-vk_default!(VkInstance_T);
-vk_default!(VkPhysicalDevice_T);
-vk_default!(VkDevice_T);
-vk_default!(VkQueue_T);
-vk_default!(VkSemaphore_T);
-vk_default!(VkCommandBuffer_T);
-vk_default!(VkFence_T);
-vk_default!(VkDeviceMemory_T);
-vk_default!(VkEvent_T);
-vk_default!(VkQueryPool_T);
-vk_default!(VkBufferView_T);
-vk_default!(VkImageView_T);
-vk_default!(VkShaderModule_T);
-vk_default!(VkPipelineCache_T);
-vk_default!(VkPipelineLayout_T);
-vk_default!(VkPipeline_T);
-vk_default!(VkRenderPass_T);
-vk_default!(VkDescriptorSetLayout_T);
-vk_default!(VkSampler_T);
-vk_default!(VkDescriptorSet_T);
-vk_default!(VkDescriptorPool_T);
-vk_default!(VkFramebuffer_T);
-vk_default!(VkCommandPool_T);
+// InfoBuilder implementations
+impl_vk_info_builder!(
+    VkCommandBufferBeginInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkCommandBufferUsageFlags,
+    pInheritanceInfo: *const VkCommandBufferInheritanceInfo,
+);
+
+impl_vk_info_builder!(
+    VkSubmitInfo,
+    waitSemaphoreCount: u32,
+    pWaitSemaphores: *const VkSemaphore,
+    pWaitDstStageMask: *const VkPipelineStageFlags,
+    commandBufferCount: u32,
+    pCommandBuffers: *const VkCommandBuffer,
+    signalSemaphoreCount: u32,
+    pSignalSemaphores: *const VkSemaphore,
+);
+
+impl_vk_info_builder!(
+    VkFenceCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkFenceCreateFlags,
+);
+
+impl_vk_info_builder!(
+    VkPipelineLayoutCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkPipelineLayoutCreateFlags,
+    setLayoutCount: u32,
+    pSetLayouts: *const VkDescriptorSetLayout,
+    pushConstantRangeCount: u32,
+    pPushConstantRanges: *const VkPushConstantRange,
+);
+
+impl_vk_info_builder!(
+    VkComputePipelineCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkPipelineCreateFlags,
+    stage: VkPipelineShaderStageCreateInfo,
+    layout: VkPipelineLayout,
+    basePipelineHandle: VkPipeline,
+    basePipelineIndex: i32,
+);
 
 pub fn vk_assert(result: VkResult) {
     assert!(result == VkResult::VK_SUCCESS, "VkResult: {:?}", result);
