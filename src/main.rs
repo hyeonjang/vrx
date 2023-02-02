@@ -1,7 +1,7 @@
+use anyhow::*;
 use std::env;
 use std::ffi::*;
 use std::ptr::*;
-use anyhow::*;
 use vkcholesky::*;
 
 const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
@@ -12,6 +12,37 @@ fn main() -> Result<()> {
 
     let device = Device::new();
     let descriptor = Descriptor::new(1, &device.self_);
+
+    let data = vec![1, 2, 3, 4, 5];
+    let mut buffer = device
+        .create_buffer(
+            data,
+            (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+                | VK_BUFFER_USAGE_TRANSFER_DST_BIT) as u32,
+            0,
+        )
+        .unwrap();
+    buffer.alloc(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT as u32);
+
+    let cmd = device
+        .allocate_command_buffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1)
+        .unwrap();
+
+    vkCmdBlock!{cmd[0],
+        
+    };
+
+    let submit_info = VkSubmitInfoBuilder::new()
+        .commandBufferCount(cmd.len() as u32)
+        .pCommandBuffers(cmd.as_ptr())
+        .waitSemaphoreCount(0)
+        .build();
+
+    let fence_info = VkFenceCreateInfoBuilder::new().flags(0).build();
+
+    let fence = device.create_fence(fence_info, None).unwrap();
+    device.queue_submit(0, &submit_info, 1, fence);
 
     // compute pipeline
     let mut pipeline = vk_instantiate!(VkPipeline);
@@ -34,15 +65,13 @@ fn main() -> Result<()> {
         }
 
         let mut pipeline_layout = vk_instantiate!(VkPipelineLayout);
-        let pipeline_layout_create_info = VkPipelineLayoutCreateInfo {
-            sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            pNext: null(),
-            flags: 0,
-            setLayoutCount: descriptor.set_layouts.len() as u32,
-            pSetLayouts: descriptor.set_layouts.as_ptr(),
-            pushConstantRangeCount: 0,
-            pPushConstantRanges: null(),
-        };
+        let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
+            .flags(0)
+            .setLayoutCount(descriptor.set_layouts.len() as u32)
+            .pSetLayouts(descriptor.set_layouts.as_ptr())
+            .pushConstantRangeCount(0)
+            .build();
+
         unsafe {
             vk_assert(vkCreatePipelineLayout(
                 device.self_,
@@ -67,15 +96,13 @@ fn main() -> Result<()> {
         };
 
         println!("pipeline");
-        let compute_pipeline_create_info = VkComputePipelineCreateInfo {
-            sType: VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-            pNext: null(),
-            flags: 0,
-            stage: pipeline_stage_create_info,
-            layout: pipeline_layout,
-            basePipelineHandle: null_mut(),
-            basePipelineIndex: 0,
-        };
+        let compute_pipeline_create_info = VkComputePipelineCreateInfoBuilder::new()
+            .flags(0)
+            .stage(pipeline_stage_create_info)
+            .layout(pipeline_layout)
+            .basePipelineIndex(0)    
+            .build();
+
         unsafe {
             vk_assert(vkCreateComputePipelines(
                 device.self_,
@@ -86,33 +113,36 @@ fn main() -> Result<()> {
                 &mut pipeline,
             ));
         }
-        println!("here");
     }
 
-    // commands
-    let cmd = device.allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY).unwrap();
-    {
-        let begin_info = VkCommandBufferBeginInfo {
-            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            pNext: null(),
-            flags: 0,
-            pInheritanceInfo: null(),
-        };
-        unsafe {        
-            vkBeginCommandBuffer(cmd, &begin_info);
-        }
+    // let vv = vec![1, 2];
 
-        let buf_barrier = VkBufferMemoryBarrier {
-            sType: VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            pNext: null(),
-            srcAccessMask: todo!(),
-            dstAccessMask: todo!(),
-            srcQueueFamilyIndex: todo!(),
-            dstQueueFamilyIndex: todo!(),
-            buffer: todo!(),
-            offset: todo!(),
-            size: todo!(),
-        };
+    // commands
+    // let cmd = device
+    //     .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+    //     .unwrap();
+    {
+        // let begin_info = VkCommandBufferBeginInfo {
+        //     sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        //     pNext: null(),
+        //     flags: 0,
+        //     pInheritanceInfo: null(),
+        // };
+        // unsafe {
+        //     vkBeginCommandBuffer(cmd, &begin_info);
+        // }
+
+        // let buf_barrier = VkBufferMemoryBarrier {
+        //     sType: VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        //     pNext: null(),
+        //     srcAccess: VK_ACCESS_TRANSFER_WRITE_BIT,
+        //     dstAccessMask: VK_ACCESS_HOST_READ_BIT,
+        //     srcQueueFamilyIndex: todo!(),
+        //     dstQueueFamilyIndex: todo!(),
+        //     buffer: buffer.,
+        //     offset: todo!(),
+        //     size: todo!(),
+        // };
     }
 
     Ok(())
