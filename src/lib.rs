@@ -4,10 +4,9 @@
 #![allow(unused)]
 
 include!("bindings.rs");
-// include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 use std::ffi::*;
-use std::mem::MaybeUninit;
+use std::mem::*;
 use std::ptr::*;
 use std::str::*;
 use std::sync::{Mutex, Once};
@@ -404,9 +403,35 @@ impl Device {
 
         Self {
             self_: device,
-            queue: queue,
             queue_family_index: queue_family_index,
             command_pool: command_pool,
+        }
+    }
+
+    fn get_queue(&self, index: usize) -> Result<VkQueue> {
+        let mut queue = vk_instantiate!(VkQueue);
+        unsafe {
+            vkGetDeviceQueue(
+                self.self_,
+                self.queue_family_index,
+                index as u32,
+                &mut queue,
+            );
+        };
+        Ok(queue)
+    }
+
+    pub fn queue_submit(
+        &self,
+        index: usize,
+        infos: *const VkSubmitInfo,
+        info_count: u32,
+        fence: VkFence,
+    ) {
+        let queue = self.get_queue(index).unwrap();
+
+        unsafe {
+            vk_assert(vkQueueSubmit(queue, info_count, infos, fence));
         }
     }
 
@@ -428,11 +453,35 @@ impl Device {
                 pCode: code_u32.as_ptr(),
             };
 
-            vk_assert(
-                vkCreateShaderModule(self.self_, &shader_create_info, null(), &mut module)
-            );
+            vk_assert(vkCreateShaderModule(
+                self.self_,
+                &shader_create_info,
+                null(),
+                &mut module,
+            ));
         }
         Ok(module)
+    }
+
+    // none shared vkbuffer
+    pub fn create_buffer<T>(
+        &self,
+        data: Vec<T>,
+        usage: VkBufferUsageFlags,
+        flags: VkBufferCreateFlags,
+    ) -> Result<Buffer<T>> {
+        let info = VkBufferCreateInfo {
+            sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            pNext: null(),
+            flags: flags,
+            size: (size_of::<T>() * data.len()) as u64,
+            usage: usage,
+            sharingMode: VK_SHARING_MODE_EXCLUSIVE,
+            queueFamilyIndexCount: self.queue_family_index, // no working here
+            pQueueFamilyIndices: &self.queue_family_index,  // no working here
+        };
+
+        Ok(Buffer::<T>::new(data, flags, usage, &self.self_))
     }
 
     pub fn allocate_command_buffer(&self, level: VkCommandBufferLevel) -> Result<VkCommandBuffer> {
@@ -475,6 +524,20 @@ impl Device {
         }
         Ok(cmd_bufs)
     }
+
+    pub fn create_fence(&self, info:VkFenceCreateInfo, p_allocator:Option<*const VkAllocationCallbacks>) -> Result<VkFence> {
+        let mut fence = vk_instantiate!(VkFence);
+
+        unsafe {
+            if let Some(p) = p_allocator {
+                vkCreateFence(self.self_, &info, p_allocator.unwrap(), &mut fence);
+            } else {
+                vkCreateFence(self.self_, &info, null(), &mut fence);
+            }
+        }
+        Ok(fence)
+    } 
+
 }
 
 pub struct Buffer<'a, T> {
@@ -485,13 +548,28 @@ pub struct Buffer<'a, T> {
 }
 
 impl<'a, T> Buffer<'a, T> {
-    pub fn new(info: VkBufferCreateInfo, data: Vec<T>, device: &'a VkDevice) -> Self {
+    pub fn new(
+        data: Vec<T>,
+        flags: VkBufferCreateFlags,
+        usage: VkBufferUsageFlags,
+        device: &'a VkDevice,
+    ) -> Self {
         let mut buf = vk_instantiate!(VkBuffer);
-        let mem = vk_instantiate!(VkDeviceMemory);
         unsafe {
+            let info = VkBufferCreateInfo {
+                sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                pNext: null(),
+                flags: flags,
+                size: (size_of::<T>() * data.len()) as u64,
+                usage: usage,
+                sharingMode: VK_SHARING_MODE_EXCLUSIVE,
+                queueFamilyIndexCount: 0,    // no working here
+                pQueueFamilyIndices: null(), // no working here
+            };
             vk_assert(vkCreateBuffer(*device, &info, null(), &mut buf));
         }
 
+        let mem = vk_instantiate!(VkDeviceMemory);
         Self {
             self_: buf,
             memory: mem,
@@ -523,7 +601,7 @@ impl<'a, T> Buffer<'a, T> {
             vkGetBufferMemoryRequirements(*self.device, self.self_, &mut mem_req);
 
             let mut mem_alloc_info = VkMemoryAllocateInfo {
-                sType: VK_STRUCTURE_TYPE_APPLICATION_INFO,
+                sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                 pNext: null(),
                 allocationSize: mem_req.size,
                 memoryTypeIndex: 0,
