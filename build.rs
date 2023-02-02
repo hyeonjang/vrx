@@ -51,37 +51,15 @@
 // }
 extern crate bindgen;
 
-use cxx_build::CFG;
+// use cxx_build::CFG;
+use bindgen::callbacks::ParseCallbacks;
 use std::env;
 use std::path::{Path, PathBuf};
 
 fn main() {
     // check env
     let vulkan_sdk = env::var("VULKAN_SDK").unwrap();
-
     let vulkan_sdk = Path::new(&vulkan_sdk);
-    let vk_include_path = Path::new(&vulkan_sdk).join("include/");
-    CFG.exported_header_dirs.push(&vk_include_path);
-
-    // rust header bindings
-    let bindings = bindgen::Builder::default()
-        .header(vulkan_sdk.join("include/vulkan/vulkan.h").to_str().unwrap())
-        .prepend_enum_name(false)
-        .size_t_is_usize(true)
-        .rustified_enum("VkResult")
-        .generate()
-        .expect("Unable to generate bindings");
-    let out_path = PathBuf::from("./src");
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
-
-    // rust cxx compile
-    // cxx_build::bridge("src/lib.rs")
-    //     .file("src/vkcholesky.cc")
-    //     .flag_if_supported("-std=c++14")
-    //     .compile("vkcholesky");
-
     // link
     if cfg!(unix) {
         println!(
@@ -97,6 +75,22 @@ fn main() {
         println!("cargo:rustc-link-lib=vulkan-1");
     }
     println!("cargo:rerun-if-changed=src/main.rs");
-    println!("cargo:rerun-if-changed=src/vkcholesky.h");
-    println!("cargo:rerun-if-changed=src/vkcholesky.cc");
+
+    let callback = bindgen::CargoCallbacks;
+    println!("{:?}", callback.add_derives("Builder"));
+
+    // rust header bindings
+    let bindings = bindgen::Builder::default()
+        .header(vulkan_sdk.join("include/vulkan/vulkan.h").to_str().unwrap())
+        .prepend_enum_name(false)
+        .derive_default(true)
+        .size_t_is_usize(true)
+        .rustified_enum("VkResult")
+        .parse_callbacks(Box::new(callback))
+        .generate()
+        .expect("Unable to generate bindings");
+    let out_path = PathBuf::from("./src");
+    bindings
+        .write_to_file(out_path.join("bindings.rs"))
+        .expect("Couldn't write bindings!");
 }
