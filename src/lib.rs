@@ -181,6 +181,9 @@ pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 22) | (minor << 12) | patch
 }
 
+//
+// higher-level wrapper
+//
 pub struct Context {
     pub instance: VkInstance,
     pub physical_devices: Vec<VkPhysicalDevice>,
@@ -302,7 +305,6 @@ fn vulkan_context() -> &'static Context {
 
 pub struct Device {
     pub self_: VkDevice,
-    pub queue: VkQueue,
     pub queue_family_index: u32,
     pub command_pool: VkCommandPool,
 }
@@ -310,7 +312,6 @@ pub struct Device {
 impl Device {
     pub fn new() -> Self {
         let mut device = vk_instantiate!(VkDevice);
-        let mut queue = vk_instantiate!(VkQueue);
         let mut queue_family_index: u32 = 0;
         let mut command_pool = vk_instantiate!(VkCommandPool);
 
@@ -383,7 +384,6 @@ impl Device {
                 null(),
                 &mut device,
             ));
-            vkGetDeviceQueue(device, queue_family_index, 0, &mut queue);
         }
 
         // command pool
@@ -649,8 +649,23 @@ impl<'a> Descriptor<'a> {
     }
 }
 
-pub struct CommandBuffer {
-    self_: VkCommandBuffer,
+#[macro_export]
+macro_rules! vkCmdBlock {
+    ($cmd:expr, $($commands:expr)*) => {
+        let begin_info = VkCommandBufferBeginInfoBuilder::new()
+            .flags(0)
+            .build();
+
+        unsafe {
+            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
+
+            $(
+                $commands
+            )*
+
+            vk_assert(vkEndCommandBuffer($cmd));
+        }
+    };
 }
 
 #[cfg(test)]
