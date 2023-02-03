@@ -13,36 +13,53 @@ fn main() -> Result<()> {
     let device = Device::new();
     let descriptor = Descriptor::new(1, &device.self_);
 
-    let data = vec![1, 2, 3, 4, 5];
-    let mut buffer = device
+    let host_data = vec![1, 2, 3, 4, 5];
+    let device_data = vec![0, 0, 0, 0, 0];
+    let mut host_buffer = device
         .create_buffer(
-            data,
-            (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-                | VK_BUFFER_USAGE_TRANSFER_DST_BIT) as u32,
+            host_data,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             0,
         )
         .unwrap();
-    buffer.alloc(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT as u32);
+    host_buffer.alloc(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    host_buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0);
+    host_buffer.bind_buffer_memory(0);
 
-    let cmd = device
-        .allocate_command_buffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1)
+    let mut device_buffer = device
+        .create_buffer(
+            device_data,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+                | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            0,
+        )
         .unwrap();
+    device_buffer.alloc(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    device_buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0);
+    device_buffer.bind_buffer_memory(0);
 
-    vkCmdBlock!{cmd[0],
-        
-    };
+    // commands
+    let cmd = device
+        .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY,)
+        .unwrap();
+    vkCmdBlock! {
+        cmd,
+        copy_buffer(host_buffer.as_raw(), device_buffer.as_raw(), 1, [0, 0, 1]);
+    }
 
     let submit_info = VkSubmitInfoBuilder::new()
-        .commandBufferCount(cmd.len() as u32)
-        .pCommandBuffers(cmd.as_ptr())
+        .commandBufferCount(1 as u32)
+        .pCommandBuffers(&cmd)
         .waitSemaphoreCount(0)
         .build();
 
     let fence_info = VkFenceCreateInfoBuilder::new().flags(0).build();
-
     let fence = device.create_fence(fence_info, None).unwrap();
     device.queue_submit(0, &submit_info, 1, fence);
+    // device.wait_for_fence();
+    // device.destroy_fence();
+    // device.free_commands_buffers();
 
     // compute pipeline
     let mut pipeline = vk_instantiate!(VkPipeline);
@@ -100,7 +117,7 @@ fn main() -> Result<()> {
             .flags(0)
             .stage(pipeline_stage_create_info)
             .layout(pipeline_layout)
-            .basePipelineIndex(0)    
+            .basePipelineIndex(0)
             .build();
 
         unsafe {
