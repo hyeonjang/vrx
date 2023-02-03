@@ -5,16 +5,16 @@
 
 include!("bindings.rs");
 
+use std::any::{type_name, Any};
 use std::ffi::*;
 use std::mem::*;
 use std::ptr::*;
 use std::str::*;
 use std::sync::{Mutex, Once};
-use std::any::{type_name, Any};
 
+use anyhow::*;
 use paste::paste;
 use regex::{Regex, RegexSet};
-use anyhow::*;
 
 use phf::phf_map;
 
@@ -301,6 +301,27 @@ fn vulkan_context() -> &'static Context {
 
     unsafe { &*CTX.as_ptr() }
 }
+pub trait VkWrapper<T> {
+    type VkStruct;
+
+    fn as_raw(&self) -> Self::VkStruct;
+}
+
+impl<T> VkWrapper<T> for Device {
+    type VkStruct = VkDevice;
+
+    fn as_raw(&self) -> VkDevice {
+        self.self_
+    }
+}
+
+impl<'a, T> VkWrapper<T> for Buffer<'a, T> {
+    type VkStruct = VkBuffer;
+
+    fn as_raw(&self) -> VkBuffer {
+        self.buffer
+    }
+}
 
 pub struct Device {
     pub self_: VkDevice,
@@ -352,7 +373,6 @@ impl Device {
             queue_family_index = clt_cmpts[0] as u32;
         }
 
-        println!("device");
         // device
         unsafe {
             let queue_priority = 1.0;
@@ -408,7 +428,9 @@ impl Device {
         }
     }
 
-    fn get_queue(&self, index: usize) -> Result<VkQueue> {
+    // 
+    // vkqueues 
+    pub fn get_queue(&self, index: usize) -> Result<VkQueue> {
         let mut queue = vk_instantiate!(VkQueue);
         unsafe {
             vkGetDeviceQueue(
@@ -463,11 +485,12 @@ impl Device {
         Ok(module)
     }
 
-    // none shared vkbuffer
+    //
+    // shared vkbuffer
     pub fn create_buffer<T>(
         &self,
         data: Vec<T>,
-        usage: VkBufferUsageFlags,
+        usage: VkBufferUsageFlagBits,
         flags: VkBufferCreateFlags,
     ) -> Result<Buffer<T>> {
         let info = VkBufferCreateInfo {
@@ -475,15 +498,22 @@ impl Device {
             pNext: null(),
             flags: flags,
             size: (size_of::<T>() * data.len()) as u64,
-            usage: usage,
+            usage: usage as VkBufferUsageFlags,
             sharingMode: VK_SHARING_MODE_EXCLUSIVE,
             queueFamilyIndexCount: self.queue_family_index, // no working here
             pQueueFamilyIndices: &self.queue_family_index,  // no working here
         };
 
-        Ok(Buffer::<T>::new(data, flags, usage, &self.self_))
+        Ok(Buffer::<T>::new(
+            data,
+            flags,
+            usage as VkBufferUsageFlags,
+            &self.self_,
+        ))
     }
 
+    //
+    // command buffer
     pub fn allocate_command_buffer(&self, level: VkCommandBufferLevel) -> Result<VkCommandBuffer> {
         let mut cmd_buf = vk_instantiate!(VkCommandBuffer);
 
@@ -525,7 +555,13 @@ impl Device {
         Ok(cmd_bufs)
     }
 
-    pub fn create_fence(&self, info:VkFenceCreateInfo, p_allocator:Option<*const VkAllocationCallbacks>) -> Result<VkFence> {
+    //
+    // fence
+    pub fn create_fence(
+        &self,
+        info: VkFenceCreateInfo,
+        p_allocator: Option<*const VkAllocationCallbacks>,
+    ) -> Result<VkFence> {
         let mut fence = vk_instantiate!(VkFence);
 
         unsafe {
@@ -536,13 +572,25 @@ impl Device {
             }
         }
         Ok(fence)
+    }
+
+    pub fn wait_for_fence(&self) {
+        
     } 
+
+    pub fn destroy_fence(&self) {
+
+    } 
+
+    pub fn free_commands_buffers(&self) {
+
+    }
 
 }
 
 pub struct Buffer<'a, T> {
     device: &'a VkDevice,
-    self_: VkBuffer,
+    buffer: VkBuffer,
     memory: VkDeviceMemory,
     data: Vec<T>,
 }
@@ -571,14 +619,14 @@ impl<'a, T> Buffer<'a, T> {
 
         let mem = vk_instantiate!(VkDeviceMemory);
         Self {
-            self_: buf,
+            buffer: buf,
             memory: mem,
             data: data,
             device: device,
         }
     }
 
-    pub fn alloc(&mut self, mem_prop_flags: VkMemoryPropertyFlags) {
+    pub fn alloc(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
         let ctx = vulkan_context();
         unsafe {
             // dummy
@@ -598,7 +646,7 @@ impl<'a, T> Buffer<'a, T> {
                 alignment: 0,
                 memoryTypeBits: 0,
             };
-            vkGetBufferMemoryRequirements(*self.device, self.self_, &mut mem_req);
+            vkGetBufferMemoryRequirements(*self.device, self.buffer, &mut mem_req);
 
             let mut mem_alloc_info = VkMemoryAllocateInfo {
                 sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -609,8 +657,9 @@ impl<'a, T> Buffer<'a, T> {
 
             for i in 0..mem_prop.memoryTypeCount {
                 if mem_req.memoryTypeBits & 1 == 1 {
-                    if mem_prop.memoryTypes[i as usize].propertyFlags & mem_prop_flags
-                        == mem_prop_flags
+                    if mem_prop.memoryTypes[i as usize].propertyFlags
+                        & mem_prop_flags as VkMemoryPropertyFlags
+                        == mem_prop_flags as VkMemoryPropertyFlags
                     {
                         mem_alloc_info.memoryTypeIndex = i;
                     }
@@ -622,6 +671,25 @@ impl<'a, T> Buffer<'a, T> {
                 null(),
                 &mut self.memory,
             ));
+        }
+    }
+
+    pub fn map_memory(&self, offset: u64, size: u64, flags: u32) {
+        unsafe {
+            let mut mapped : *mut c_void = null_mut();
+            vk_assert(vkMapMemory(*self.device, self.memory, offset, size, flags, &mut mapped));
+        }
+    }
+
+    pub fn unmap_memory(&self) {
+        unsafe {
+            vkUnmapMemory(*self.device, self.memory);
+        }
+    } 
+
+    pub fn bind_buffer_memory(&self, offset: VkDeviceSize)  {
+        unsafe {
+            vk_assert(vkBindBufferMemory(*self.device, self.buffer, self.memory, offset));
         }
     }
 }
@@ -727,9 +795,30 @@ impl<'a> Descriptor<'a> {
     }
 }
 
+// 
+// vulkan command block roles
+// 
 #[macro_export]
 macro_rules! vkCmdBlock {
-    ($cmd:expr, $($commands:expr)*) => {
+    ($cmd:expr, $($commands:tt $arguments:tt;)*) => {
+
+        macro_rules! inner {
+            (copy_buffer($source:expr, $target:expr, $num:expr, $buffer_copy_list:expr)) => {
+                let bufferCopy = VkBufferCopy {
+                    srcOffset: $buffer_copy_list[0],
+                    dstOffset: $buffer_copy_list[1],
+                    size: $buffer_copy_list[2],
+                };
+
+                vkCmdCopyBuffer($cmd, $source, $target, $num, &bufferCopy);
+            };
+
+            // (bind_pipeline($source:expr, $target:expr, $num:expr, $copy_region:expr); $($command:tt $args:tt)*) => {
+            //     inner!($command $args);
+            // };
+
+        }
+
         let begin_info = VkCommandBufferBeginInfoBuilder::new()
             .flags(0)
             .build();
@@ -738,7 +827,7 @@ macro_rules! vkCmdBlock {
             vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
 
             $(
-                $commands
+                inner!($commands $arguments);
             )*
 
             vk_assert(vkEndCommandBuffer($cmd));
