@@ -76,8 +76,8 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=src/main.rs");
 
-    let callback = bindgen::CargoCallbacks;
-    println!("{:?}", callback.add_derives("Builder"));
+    // let callback = bindgen::CargoCallbacks;
+    // println!("{:?}", callback.add_derives("Builder"));
 
     // rust header bindings
     let bindings = bindgen::Builder::default()
@@ -86,7 +86,7 @@ fn main() {
         .derive_default(true)
         .size_t_is_usize(true)
         .rustified_enum("VkResult")
-        .parse_callbacks(Box::new(callback))
+        // .parse_callbacks(Box::new(callback))
         .generate()
         .expect("Unable to generate bindings");
     let out_path = PathBuf::from("./src");
