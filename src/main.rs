@@ -41,13 +41,12 @@ fn main() -> Result<()> {
 
     // commands
     let cmd = device
-        .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY,)
+        .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
         .unwrap();
     vkCmdBlock! {
-        cmd,
-        copy_buffer(host_buffer.as_raw(), device_buffer.as_raw(), 1, [0, 0, 1]);
+        THIS cmd;
+        COPY_BUFFER(host_buffer.as_raw(), device_buffer.as_raw(), 1, [0, 0, 1]);
     }
-
     let submit_info = VkSubmitInfoBuilder::new()
         .commandBufferCount(1 as u32)
         .pCommandBuffers(&cmd)
@@ -57,9 +56,9 @@ fn main() -> Result<()> {
     let fence_info = VkFenceCreateInfoBuilder::new().flags(0).build();
     let fence = device.create_fence(fence_info, None).unwrap();
     device.queue_submit(0, &submit_info, 1, fence);
-    // device.wait_for_fence();
-    // device.destroy_fence();
-    // device.free_commands_buffers();
+    device.wait_for_fence(1, &fence, false, 10000);
+    device.destroy_fence(fence, None);
+    device.free_commands_buffers(1, &cmd);
 
     // compute pipeline
     let mut pipeline = vk_instantiate!(VkPipeline);
@@ -133,6 +132,32 @@ fn main() -> Result<()> {
     }
 
     // let vv = vec![1, 2];
+
+    let cmd = device
+        .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+        .unwrap();
+
+    vkCmdBlock!{
+        THIS cmd;
+
+        let buffer_barrier = VkBufferMemoryBarrierBuilder::new()
+            .buffer(device_buffer.as_raw())
+            .size(VK_WHOLE_SIZE.try_into().unwrap())
+            .srcAccessMask(VK_ACCESS_HOST_WRITE_BIT.try_into().unwrap())
+            .dstAccessMask(VK_ACCESS_SHADER_READ_BIT.try_into().unwrap())
+            .build();
+
+        PIPELINE_BARRIER(
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 
+            0, 
+            0, 
+            null(), 
+            1, 
+            &buffer_barrier, 
+            0, 
+            null());
+    };
 
     // commands
     // let cmd = device
