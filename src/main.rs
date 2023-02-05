@@ -62,6 +62,7 @@ fn main() -> Result<()> {
 
     // compute pipeline
     let mut pipeline = vk_instantiate!(VkPipeline);
+    let mut pipeline_layout = vk_instantiate!(VkPipelineLayout);
     {
         let mut pipeline_cache = vk_instantiate!(VkPipelineCache);
         let pipeline_cache_create_info = VkPipelineCacheCreateInfo {
@@ -80,7 +81,6 @@ fn main() -> Result<()> {
             ));
         }
 
-        let mut pipeline_layout = vk_instantiate!(VkPipelineLayout);
         let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
             .flags(0)
             .setLayoutCount(descriptor.set_layouts.len() as u32)
@@ -137,55 +137,56 @@ fn main() -> Result<()> {
         .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
         .unwrap();
 
+    println!("start block");
     vkCmdBlock!{
         THIS cmd;
 
-        let buffer_barrier = VkBufferMemoryBarrierBuilder::new()
+        let buffer_barrier0 = VkBufferMemoryBarrierBuilder::new()
             .buffer(device_buffer.as_raw())
-            .size(VK_WHOLE_SIZE.try_into().unwrap())
+            // .size(u32::from_ne_bytes(0x14).into())
+            .size(0x14) //?? bug? VK_WHOLE_SIZE CHECKING needed
             .srcAccessMask(VK_ACCESS_HOST_WRITE_BIT.try_into().unwrap())
             .dstAccessMask(VK_ACCESS_SHADER_READ_BIT.try_into().unwrap())
+            .srcQueueFamilyIndex(device.queue_family_index)
+            .dstQueueFamilyIndex(device.queue_family_index)
             .build();
 
         PIPELINE_BARRIER(
+            VK_PIPELINE_STAGE_HOST_BIT, 
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
-            VK_PIPELINE_STAGE_TRANSFER_BIT, 
-            0, 
-            0, 
-            null(), 
-            1, 
-            &buffer_barrier, 
-            0, 
-            null());
+            0, 0, null(), 1, 
+            &buffer_barrier0, 0, null()
+        );
+
+        BIND_PIPELINE(
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            pipeline
+        );
+
+        BIND_DESCRIPTOR_SETS(
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            pipeline_layout,
+            0, 1,
+            descriptor.sets.as_ptr(),
+            0, null()
+        );
+
+        DISPATCH(32, 1, 1);
+
+        let buffer_barrier1 = VkBufferMemoryBarrierBuilder::new()
+            .srcAccessMask(VK_ACCESS_SHADER_WRITE_BIT.try_into().unwrap())
+            .dstAccessMask(VK_ACCESS_TRANSFER_READ_BIT.try_into().unwrap())
+            .buffer(device_buffer.as_raw())
+            .size(0x14)
+            .build();
+
+        PIPELINE_BARRIER(
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, null(), 1, 
+            &buffer_barrier1, 0, null()
+        );
     };
-
-    // commands
-    // let cmd = device
-    //     .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
-    //     .unwrap();
-    {
-        // let begin_info = VkCommandBufferBeginInfo {
-        //     sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        //     pNext: null(),
-        //     flags: 0,
-        //     pInheritanceInfo: null(),
-        // };
-        // unsafe {
-        //     vkBeginCommandBuffer(cmd, &begin_info);
-        // }
-
-        // let buf_barrier = VkBufferMemoryBarrier {
-        //     sType: VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        //     pNext: null(),
-        //     srcAccess: VK_ACCESS_TRANSFER_WRITE_BIT,
-        //     dstAccessMask: VK_ACCESS_HOST_READ_BIT,
-        //     srcQueueFamilyIndex: todo!(),
-        //     dstQueueFamilyIndex: todo!(),
-        //     buffer: buffer.,
-        //     offset: todo!(),
-        //     size: todo!(),
-        // };
-    }
 
     Ok(())
 }
