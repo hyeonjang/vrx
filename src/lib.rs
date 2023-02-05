@@ -574,18 +574,48 @@ impl Device {
         Ok(fence)
     }
 
-    pub fn wait_for_fence(&self) {
-        
-    } 
-
-    pub fn destroy_fence(&self) {
-
-    } 
-
-    pub fn free_commands_buffers(&self) {
-
+    pub fn wait_for_fence(
+        &self,
+        fence_count: u32,
+        p_fence: *const VkFence,
+        wait_all: bool,
+        timeout: u64,
+    ) {
+        unsafe {
+            vk_assert(vkWaitForFences(
+                self.self_,
+                fence_count,
+                p_fence,
+                wait_all as VkBool32,
+                timeout,
+            ));
+        }
     }
+        
+    pub fn destroy_fence(&self, fence: VkFence, p_allocator: Option<*const VkAllocationCallbacks>) {
+        unsafe {
+            if let Some(p) = p_allocator {
+                vkDestroyFence(self.self_, fence, p);
+            } else {
+                vkDestroyFence(self.self_, fence, null());
+            }
+        }
+    } 
 
+    pub fn free_commands_buffers(
+        &self,
+        command_buffer_count: u32,
+        p_command_buffers: *const VkCommandBuffer,
+    ) {
+        unsafe {
+            vkFreeCommandBuffers(
+                self.self_,
+                self.command_pool,
+                command_buffer_count,
+                p_command_buffers,
+            )
+    } 
+    }
 }
 
 pub struct Buffer<'a, T> {
@@ -676,8 +706,15 @@ impl<'a, T> Buffer<'a, T> {
 
     pub fn map_memory(&self, offset: u64, size: u64, flags: u32) {
         unsafe {
-            let mut mapped : *mut c_void = null_mut();
-            vk_assert(vkMapMemory(*self.device, self.memory, offset, size, flags, &mut mapped));
+            let mut mapped: *mut c_void = null_mut();
+            vk_assert(vkMapMemory(
+                *self.device,
+                self.memory,
+                offset,
+                size,
+                flags,
+                &mut mapped,
+            ));
         }
     }
 
@@ -687,9 +724,14 @@ impl<'a, T> Buffer<'a, T> {
         }
     } 
 
-    pub fn bind_buffer_memory(&self, offset: VkDeviceSize)  {
+    pub fn bind_buffer_memory(&self, offset: VkDeviceSize) {
         unsafe {
-            vk_assert(vkBindBufferMemory(*self.device, self.buffer, self.memory, offset));
+            vk_assert(vkBindBufferMemory(
+                *self.device,
+                self.buffer,
+                self.memory,
+                offset,
+            ));
         }
     }
 }
