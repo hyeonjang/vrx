@@ -52,7 +52,6 @@
 extern crate bindgen;
 
 // use cxx_build::CFG;
-use bindgen::callbacks::ParseCallbacks;
 use std::env;
 use std::path::{Path, PathBuf};
 
