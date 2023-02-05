@@ -860,15 +860,70 @@ impl<'a> Descriptor<'a> {
 #[macro_export]
 macro_rules! vkCmdBlock {
 
+    //
+    // Parse the Vulkan Commands: the top (starting point) of parser
+    //
+    // * 'THIS' - indicator and identificator for starting cmd block
+    // * 'cmd' - command buffer instance
+    // * 'function' - command function for command buffer
+    (THIS $cmd:expr; $function:ident($($args:expr),*);  $($tail:tt)*) => {
+        
+        let begin_info = VkCommandBufferBeginInfoBuilder::new()
+        .flags(0)
+        .build();
+
+        unsafe {
+            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
+
+            vkCmdBlock!(@inner $cmd, $function($($args),*););
+            vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
+
+            vk_assert(vkEndCommandBuffer($cmd));
+        }
+    };
+
+    // * 'cmd' - command buffer instance
+    // * 'let lv0 = rv0' - pre declarations
+    (THIS $cmd:expr; let $lv:ident = $rv:expr; $($tail:tt)* ) => {
+
+        let begin_info = VkCommandBufferBeginInfoBuilder::new()
+            .flags(0)
+            .build();
+
+        unsafe {
+            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
+
+            let $lv= $rv;
+            vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
+
+            vk_assert(vkEndCommandBuffer($cmd));
+        }
+    };
+
+    //
+    // tt recursive parser for the function call
+    //
+    (@tt_recursion $cmd:expr, $function:ident($($args:expr),*); $($tail:tt)*) => {
+        vkCmdBlock!(@inner $cmd, $function($($args),*););
+        vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
+    };
+
+    // declaration
+    (@tt_recursion $cmd:expr, let $lv0:ident = $rv0:expr; $($tail:tt)*) => {
+        let $lv0 = $rv0;
+        vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
+    };
+
+    // empty
+    (@tt_recursion $cmd:expr,) => {};
+
     // 
-    // Parse the Vulkan Commands without any declaration
+    // Parse the Vulkan All Commands
     // 
     // * '@inner' - identifier for inner macro
     // * 'cmd' - command buffer instance
     // * 'function' - command function for command buffer
-    (@inner $cmd:expr, $function:ident($($args:expr),*);
-        // $($function:ident($($args:expr),*);)*
-    ) => {
+    (@inner $cmd:expr, $function:ident($($args:expr),*);) => {
 
         macro_rules! inner {
             (BIND_DESCRIPTOR_SETS(
@@ -944,60 +999,10 @@ macro_rules! vkCmdBlock {
                     $p_image_memory_barriers
                 );
             };
+            
+
         } // the end of macro_rules! "inner"
-
         inner!($function($($args),*));
-    };
-
-    (@tt_recursion $cmd:expr, $function:ident($($args:expr),*); $($tail:tt)*) => {
-        vkCmdBlock!(@inner $cmd, $function($($args),*););
-        vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
-    };
-
-    (@tt_recursion $cmd:expr, let $lv0:ident = $rv0:expr; $($tail:tt)*) => {
-        let $lv0 = $rv0;
-        vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
-    };
-
-    (@tt_recursion $cmd:expr,) => {};
-
-    //
-    // Parse the Vulkan Commands with some declarations
-    //
-    // * 'cmd' - command buffer instance
-    // * 'let lv0 = rv0' - pre declarations
-    // * 'let lv1 = rv1' - aft declarations
-    // * 'function' - command function for command buffer
-    (THIS $cmd:expr; $function:ident($($args:expr),*);  $($tail:tt)*) => {
-        
-        let begin_info = VkCommandBufferBeginInfoBuilder::new()
-        .flags(0)
-        .build();
-
-        unsafe {
-            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
-
-            vkCmdBlock!(@inner $cmd, $function($($args),*););
-            vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
-
-            vk_assert(vkEndCommandBuffer($cmd));
-        }
-    };
-
-    (THIS $cmd:expr; let $lv0:ident = $rv0:expr; $($tail:tt)* ) => {
-
-        let begin_info = VkCommandBufferBeginInfoBuilder::new()
-            .flags(0)
-            .build();
-
-        unsafe {
-            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
-
-            let $lv0 = $rv0;
-            vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
-
-            vk_assert(vkEndCommandBuffer($cmd));
-        }
     };
 }
 
