@@ -22,12 +22,13 @@ pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf
     "VkCommandBufferBeginInfo" => VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     "VkSubmitInfo" => VK_STRUCTURE_TYPE_SUBMIT_INFO,
     "VkFenceCreateInfo" => VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    "VkBufferMemoryBarrier" => VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
     "VkPipelineCacheCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
     "VkPipelineLayoutCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
     "VkComputePipelineCreateInfo" => VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 };
 
-macro_rules! impl_default_vk_pointer_t {
+macro_rules! impl_default_for_vk_pointer_t {
     ( $x:ident ) => {
         impl Default for $x {
             fn default() -> $x {
@@ -37,7 +38,7 @@ macro_rules! impl_default_vk_pointer_t {
     };
 }
 
-macro_rules! impl_vk_info_builder {
+macro_rules! impl_builder_for_vk_structure_t {
     ( $type_:ty, $($field:ident: $field_type:ty $(,)?)* ) => {
 
         paste! {
@@ -101,41 +102,41 @@ macro_rules! vk_instantiate {
     }};
 }
 
-impl_default_vk_pointer_t!(VkBuffer_T);
-impl_default_vk_pointer_t!(VkImage_T);
-impl_default_vk_pointer_t!(VkInstance_T);
-impl_default_vk_pointer_t!(VkPhysicalDevice_T);
-impl_default_vk_pointer_t!(VkDevice_T);
-impl_default_vk_pointer_t!(VkQueue_T);
-impl_default_vk_pointer_t!(VkSemaphore_T);
-impl_default_vk_pointer_t!(VkCommandBuffer_T);
-impl_default_vk_pointer_t!(VkFence_T);
-impl_default_vk_pointer_t!(VkDeviceMemory_T);
-impl_default_vk_pointer_t!(VkEvent_T);
-impl_default_vk_pointer_t!(VkQueryPool_T);
-impl_default_vk_pointer_t!(VkBufferView_T);
-impl_default_vk_pointer_t!(VkImageView_T);
-impl_default_vk_pointer_t!(VkShaderModule_T);
-impl_default_vk_pointer_t!(VkPipelineCache_T);
-impl_default_vk_pointer_t!(VkPipelineLayout_T);
-impl_default_vk_pointer_t!(VkPipeline_T);
-impl_default_vk_pointer_t!(VkRenderPass_T);
-impl_default_vk_pointer_t!(VkDescriptorSetLayout_T);
-impl_default_vk_pointer_t!(VkSampler_T);
-impl_default_vk_pointer_t!(VkDescriptorSet_T);
-impl_default_vk_pointer_t!(VkDescriptorPool_T);
-impl_default_vk_pointer_t!(VkFramebuffer_T);
-impl_default_vk_pointer_t!(VkCommandPool_T);
+impl_default_for_vk_pointer_t!(VkBuffer_T);
+impl_default_for_vk_pointer_t!(VkImage_T);
+impl_default_for_vk_pointer_t!(VkInstance_T);
+impl_default_for_vk_pointer_t!(VkPhysicalDevice_T);
+impl_default_for_vk_pointer_t!(VkDevice_T);
+impl_default_for_vk_pointer_t!(VkQueue_T);
+impl_default_for_vk_pointer_t!(VkSemaphore_T);
+impl_default_for_vk_pointer_t!(VkCommandBuffer_T);
+impl_default_for_vk_pointer_t!(VkFence_T);
+impl_default_for_vk_pointer_t!(VkDeviceMemory_T);
+impl_default_for_vk_pointer_t!(VkEvent_T);
+impl_default_for_vk_pointer_t!(VkQueryPool_T);
+impl_default_for_vk_pointer_t!(VkBufferView_T);
+impl_default_for_vk_pointer_t!(VkImageView_T);
+impl_default_for_vk_pointer_t!(VkShaderModule_T);
+impl_default_for_vk_pointer_t!(VkPipelineCache_T);
+impl_default_for_vk_pointer_t!(VkPipelineLayout_T);
+impl_default_for_vk_pointer_t!(VkPipeline_T);
+impl_default_for_vk_pointer_t!(VkRenderPass_T);
+impl_default_for_vk_pointer_t!(VkDescriptorSetLayout_T);
+impl_default_for_vk_pointer_t!(VkSampler_T);
+impl_default_for_vk_pointer_t!(VkDescriptorSet_T);
+impl_default_for_vk_pointer_t!(VkDescriptorPool_T);
+impl_default_for_vk_pointer_t!(VkFramebuffer_T);
+impl_default_for_vk_pointer_t!(VkCommandPool_T);
 
 // InfoBuilder implementations
-impl_vk_info_builder!(
+impl_builder_for_vk_structure_t!(
     VkCommandBufferBeginInfo,
     pNext: *const ::std::os::raw::c_void,
     flags: VkCommandBufferUsageFlags,
     pInheritanceInfo: *const VkCommandBufferInheritanceInfo,
 );
 
-impl_vk_info_builder!(
+impl_builder_for_vk_structure_t!(
     VkSubmitInfo,
     waitSemaphoreCount: u32,
     pWaitSemaphores: *const VkSemaphore,
@@ -146,13 +147,13 @@ impl_vk_info_builder!(
     pSignalSemaphores: *const VkSemaphore,
 );
 
-impl_vk_info_builder!(
+impl_builder_for_vk_structure_t!(
     VkFenceCreateInfo,
     pNext: *const ::std::os::raw::c_void,
     flags: VkFenceCreateFlags,
 );
 
-impl_vk_info_builder!(
+impl_builder_for_vk_structure_t!(
     VkPipelineLayoutCreateInfo,
     pNext: *const ::std::os::raw::c_void,
     flags: VkPipelineLayoutCreateFlags,
@@ -162,7 +163,7 @@ impl_vk_info_builder!(
     pPushConstantRanges: *const VkPushConstantRange,
 );
 
-impl_vk_info_builder!(
+impl_builder_for_vk_structure_t!(
     VkComputePipelineCreateInfo,
     pNext: *const ::std::os::raw::c_void,
     flags: VkPipelineCreateFlags,
@@ -170,6 +171,18 @@ impl_vk_info_builder!(
     layout: VkPipelineLayout,
     basePipelineHandle: VkPipeline,
     basePipelineIndex: i32,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkBufferMemoryBarrier,
+    pNext: *const ::std::os::raw::c_void,
+    srcAccessMask: VkAccessFlags,
+    dstAccessMask: VkAccessFlags,
+    srcQueueFamilyIndex: u32,
+    dstQueueFamilyIndex: u32,
+    buffer: VkBuffer,
+    offset: VkDeviceSize,
+    size: VkDeviceSize,
 );
 
 pub fn vk_assert(result: VkResult) {
@@ -301,6 +314,10 @@ fn vulkan_context() -> &'static Context {
 
     unsafe { &*CTX.as_ptr() }
 }
+
+///
+/// High-level wrapping trait for Custom VkStructure
+///
 pub trait VkWrapper<T> {
     type VkStruct;
 
