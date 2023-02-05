@@ -795,15 +795,30 @@ impl<'a> Descriptor<'a> {
     }
 }
 
-// 
-// vulkan command block roles
-// 
+///
+/// vulkan command block roles
+///
 #[macro_export]
 macro_rules! vkCmdBlock {
-    ($cmd:expr, $($commands:tt $arguments:tt;)*) => {
+
+// 
+    // Parse the Vulkan Commands without any declaration
+// 
+    // * 'cmd' - command buffer instance
+    // * 'function' - command function for command buffer
+    (THIS $cmd:expr;
+        $($function:ident($($args:expr),*);)*
+    ) => {
 
         macro_rules! inner {
-            (copy_buffer($source:expr, $target:expr, $num:expr, $buffer_copy_list:expr)) => {
+            (BIND_PIPELINE($pipeline:expr)) => {
+                vkCmdBindPipeline(
+                    $cmd, 
+                    $pipeline, 
+                );
+            };
+
+            (COPY_BUFFER($source:expr, $target:expr, $num:expr, $buffer_copy_list:expr)) => {
                 let bufferCopy = VkBufferCopy {
                     srcOffset: $buffer_copy_list[0],
                     dstOffset: $buffer_copy_list[1],
@@ -813,9 +828,31 @@ macro_rules! vkCmdBlock {
                 vkCmdCopyBuffer($cmd, $source, $target, $num, &bufferCopy);
             };
 
-            // (bind_pipeline($source:expr, $target:expr, $num:expr, $copy_region:expr); $($command:tt $args:tt)*) => {
-            //     inner!($command $args);
-            // };
+            (PIPELINE_BARRIER(
+                $src_stage_mask:expr,
+                $dst_stage_mask:expr,
+                $dependency_flags:expr,
+                $memory_barrier_count:expr,
+                $p_memory_barriers:expr,
+                $buffer_memory_barrier_count:expr,
+                $p_buffer_memory_barriers:expr,
+                $image_memory_barrier_count:expr,
+                $p_image_memory_barriers:expr)) => {
+
+                vkCmdPipelineBarrier(
+                    $cmd,
+                    $src_stage_mask.try_into().unwrap(),
+                    $dst_stage_mask.try_into().unwrap(),
+                    $dependency_flags,
+                    $memory_barrier_count,
+                    $p_memory_barriers,
+                    $buffer_memory_barrier_count,
+                    $p_buffer_memory_barriers,
+                    $image_memory_barrier_count,
+                    $p_image_memory_barriers
+                );
+            };
+
 
         }
 
@@ -827,12 +864,34 @@ macro_rules! vkCmdBlock {
             vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
 
             $(
-                inner!($commands $arguments);
+                inner!($function($($args),*));
             )*
 
             vk_assert(vkEndCommandBuffer($cmd));
         }
     };
+
+    //
+    // Parse the Vulkan Commands with some declarations
+    //
+    // * 'cmd' - command buffer instance
+    // * 'let lv0 = rv0' - pre declarations
+    // * 'let lv1 = rv1' - aft declarations
+    // * 'function' - command function for command buffer
+    (THIS $cmd:expr;
+        $(let $lv0:ident = $rv0:expr;)+
+        $(
+            $function:ident($($args:expr),*);
+            $(let $lv1:ident = $rv1:expr;)* // optional
+        )*
+    ) => {
+        $(let $lv0 = $rv0;)+
+        $(
+            $(let $lv1 = $rv1;)*
+        )*
+        vkCmdBlock!(THIS $cmd; $($function($($args),*);)*);
+
+    }
 }
 
 #[cfg(test)]
