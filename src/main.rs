@@ -1,5 +1,4 @@
 use anyhow::*;
-use std::env;
 use std::ffi::*;
 use std::ptr::*;
 use vkcholesky::*;
@@ -7,24 +6,32 @@ use vkcholesky::*;
 const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 
 fn main() -> Result<()> {
-    let vk_layer_path = env::var("VULKAN_SDK").unwrap();
-    println!("{:?}", vk_layer_path);
-
     let device = Device::new();
-    let descriptor = Descriptor::new(1, &device.self_);
 
-    let host_data = vec![1, 2, 3, 4, 5];
-    let device_data = vec![0, 0, 0, 0, 0];
+    let host_data:Vec<i32> = (0..32).collect();
+    let device_data = vec![0; 32];
     let mut host_buffer = device
         .create_buffer(
-            host_data,
+            host_data.clone(),
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             0,
         )
         .unwrap();
     host_buffer.alloc(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    host_buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0);
+    let mut host_mapped = host_buffer.map_memory(0, host_buffer.vksize(), 0).unwrap();
+    host_mapped.copy_from_slice(host_data.clone().as_slice());
+    host_buffer.unmap_memory();
     host_buffer.bind_buffer_memory(0);
+    println!("{:?}", host_mapped);
+
+    host_buffer.map_memory(0, host_buffer.vksize(), 0);
+    let mapped_range = VkMappedMemoryRangeBuilder::new()
+        .memory(host_buffer.memory)
+        .offset(0)
+        .size(host_buffer.vksize())
+        .build();
+    host_buffer.flush_mapped_memory_range(1, &mapped_range);
+    host_buffer.unmap_memory();
 
     let mut device_buffer = device
         .create_buffer(
@@ -35,8 +42,10 @@ fn main() -> Result<()> {
             0,
         )
         .unwrap();
-    device_buffer.alloc(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    device_buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0);
+    device_buffer.alloc(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    let device_mapped = device_buffer
+        .map_memory(0, device_buffer.vksize(), 0)
+        .unwrap();
     device_buffer.bind_buffer_memory(0);
 
     // commands
@@ -45,106 +54,92 @@ fn main() -> Result<()> {
         .unwrap();
     vkCmdBlock! {
         THIS cmd;
-        COPY_BUFFER(host_buffer.as_raw(), device_buffer.as_raw(), 1, [0, 0, 1]);
+
+        let buffer_copy = VkBufferCopy { srcOffset: 0, dstOffset: 0, size: host_buffer.vksize() };
+        COPY_BUFFER(host_buffer.as_raw(), device_buffer.as_raw(), 1, &buffer_copy);
     }
+
     let submit_info = VkSubmitInfoBuilder::new()
         .commandBufferCount(1 as u32)
         .pCommandBuffers(&cmd)
         .waitSemaphoreCount(0)
         .build();
 
-    let fence_info = VkFenceCreateInfoBuilder::new().flags(0).build();
-    let fence = device.create_fence(fence_info, None).unwrap();
+    let fence_create_info = VkFenceCreateInfoBuilder::new().flags(0).build();
+    let fence = device.create_fence(fence_create_info, None).unwrap();
     device.queue_submit(0, &submit_info, 1, fence);
-    device.wait_for_fence(1, &fence, false, 10000);
+    device.wait_for_fence(1, &fence, true, u64::MAX);
     device.destroy_fence(fence, None);
     device.free_commands_buffers(1, &cmd);
 
+    //
+    // construct compute pipeline
+    //
+    let descriptor = device.create_descriptor(1).unwrap();
+    let buffer_descriptor = VkDescriptorBufferInfo {
+        buffer: device_buffer.as_raw(),
+        offset: 0,
+        range: device_buffer.vksize(),
+    };
+
+    let write_desc_set = VkWriteDescriptorSetBuilder::new()
+        .dstSet(descriptor.sets[0])
+        .descriptorCount(1)
+        .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+        .pBufferInfo(&buffer_descriptor)
+        .build();
+    descriptor.update(vec![write_desc_set]);
+
     // compute pipeline
-    let mut pipeline = vk_instantiate!(VkPipeline);
-    let mut pipeline_layout = vk_instantiate!(VkPipelineLayout);
-    {
-        let mut pipeline_cache = vk_instantiate!(VkPipelineCache);
-        let pipeline_cache_create_info = VkPipelineCacheCreateInfo {
-            sType: VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
-            pNext: null(),
-            flags: 0,
-            initialDataSize: 0,
-            pInitialData: null(),
-        };
-        unsafe {
-            vk_assert(vkCreatePipelineCache(
-                device.self_,
-                &pipeline_cache_create_info,
-                null(),
-                &mut pipeline_cache,
-            ));
-        }
+    let pipeline_cache_create_info = VkPipelineCacheCreateInfoBuilder::new()
+        .flags(0)
+        .initialDataSize(0)
+        .build();
+    let pipeline_cache = device
+        .create_pipeline_cache(&pipeline_cache_create_info)
+        .unwrap();
 
-        let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
-            .flags(0)
-            .setLayoutCount(descriptor.set_layouts.len() as u32)
-            .pSetLayouts(descriptor.set_layouts.as_ptr())
-            .pushConstantRangeCount(0)
-            .build();
+    let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
+        .flags(0)
+        .setLayoutCount(descriptor.set_layouts.len() as u32)
+        .pSetLayouts(descriptor.set_layouts.as_ptr())
+        .pushConstantRangeCount(0)
+        .build();
+    let pipeline_layout = device
+        .create_pipeline_layout(&pipeline_layout_create_info)
+        .unwrap();
 
-        unsafe {
-            vk_assert(vkCreatePipelineLayout(
-                device.self_,
-                &pipeline_layout_create_info,
-                null(),
-                &mut pipeline_layout,
-            ));
-        }
+    let name = CString::new("main").unwrap();
+    let ref_name = &name;
 
-        let name = CString::new("main").unwrap();
-        let ref_name = &name;
+    // pipeline
+    let pipeline_stage_create_info = VkPipelineShaderStageCreateInfoBuilder::new()
+        .stage(VK_SHADER_STAGE_COMPUTE_BIT)
+        .module(device.create_shader_module(COMP_SPV).unwrap())
+        .pName(ref_name.as_ptr() as *const i8)
+        .build();
+    let compute_pipeline_create_info = VkComputePipelineCreateInfoBuilder::new()
+        .flags(0)
+        .stage(pipeline_stage_create_info)
+        .layout(pipeline_layout)
+        .basePipelineIndex(0)
+        .build();
+    let pipelines = device
+        .create_compute_pipelines(pipeline_cache, 1, &compute_pipeline_create_info)
+        .unwrap();
+    let pipeline = pipelines[0];
 
-        // pipeline
-        let pipeline_stage_create_info = VkPipelineShaderStageCreateInfo {
-            sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            pNext: null(),
-            flags: 0,
-            stage: VK_SHADER_STAGE_COMPUTE_BIT,
-            module: device.create_shader_module(COMP_SPV).unwrap(),
-            pName: ref_name.as_ptr() as *const i8,
-            pSpecializationInfo: null(),
-        };
-
-        println!("pipeline");
-        let compute_pipeline_create_info = VkComputePipelineCreateInfoBuilder::new()
-            .flags(0)
-            .stage(pipeline_stage_create_info)
-            .layout(pipeline_layout)
-            .basePipelineIndex(0)
-            .build();
-
-        unsafe {
-            vk_assert(vkCreateComputePipelines(
-                device.self_,
-                pipeline_cache,
-                1,
-                &compute_pipeline_create_info,
-                null(),
-                &mut pipeline,
-            ));
-        }
-    }
-
-    // let vv = vec![1, 2];
-
+    //
+    // pipepline submit commands
     let cmd = device
         .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
         .unwrap();
-
-    println!("start block");
-    vkCmdBlock!{
+    vkCmdBlock! {
         THIS cmd;
 
         let buffer_barrier0 = VkBufferMemoryBarrierBuilder::new()
             .buffer(device_buffer.as_raw())
-            // .size(u32::from_ne_bytes(0x14).into())
-            .size(0x14) //?? bug? VK_WHOLE_SIZE CHECKING needed
+            .size(device_buffer.vksize()) //?? bug? VK_WHOLE_SIZE CHECKING needed
             .srcAccessMask(VK_ACCESS_HOST_WRITE_BIT.try_into().unwrap())
             .dstAccessMask(VK_ACCESS_SHADER_READ_BIT.try_into().unwrap())
             .srcQueueFamilyIndex(device.queue_family_index)
@@ -152,9 +147,9 @@ fn main() -> Result<()> {
             .build();
 
         PIPELINE_BARRIER(
-            VK_PIPELINE_STAGE_HOST_BIT, 
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
-            0, 0, null(), 1, 
+            VK_PIPELINE_STAGE_HOST_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, null(), 1,
             &buffer_barrier0, 0, null()
         );
 
@@ -174,19 +169,66 @@ fn main() -> Result<()> {
         DISPATCH(32, 1, 1);
 
         let buffer_barrier1 = VkBufferMemoryBarrierBuilder::new()
+            .buffer(device_buffer.as_raw())
+            .size(device_buffer.vksize())
             .srcAccessMask(VK_ACCESS_SHADER_WRITE_BIT.try_into().unwrap())
             .dstAccessMask(VK_ACCESS_TRANSFER_READ_BIT.try_into().unwrap())
-            .buffer(device_buffer.as_raw())
-            .size(0x14)
+            .srcQueueFamilyIndex(device.queue_family_index)
+            .dstQueueFamilyIndex(device.queue_family_index)
             .build();
 
         PIPELINE_BARRIER(
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_PIPELINE_STAGE_TRANSFER_BIT,
-            0, 0, null(), 1, 
+            0, 0, null(), 1,
             &buffer_barrier1, 0, null()
         );
+
+        let buffer_copy = VkBufferCopy { srcOffset: 0, dstOffset: 0, size: device_buffer.vksize() };
+        COPY_BUFFER(device_buffer.as_raw(), host_buffer.as_raw(), 1, &buffer_copy);
+
+        let buffer_barrier2 = VkBufferMemoryBarrierBuilder::new()
+            .buffer(host_buffer.as_raw())
+            .size(host_buffer.vksize())
+            .srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT.try_into().unwrap())
+            .dstAccessMask(VK_ACCESS_HOST_READ_BIT.try_into().unwrap())
+            .srcQueueFamilyIndex(device.queue_family_index)
+            .dstQueueFamilyIndex(device.queue_family_index)
+            .build();
+
+        PIPELINE_BARRIER(
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_HOST_BIT,
+            0, 0, null(), 1,
+            &buffer_barrier2, 0, null()
+        );
     };
+    let fence_create_info = VkFenceCreateInfoBuilder::new()
+        .flags(VK_FENCE_CREATE_SIGNALED_BIT.try_into().unwrap())
+        .build();
+    let fence = device.create_fence(fence_create_info, None).unwrap();
+    device.reset_fence(1, &fence);
+
+    let wait_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT as u32;
+    let submit_info = VkSubmitInfoBuilder::new()
+        .pWaitDstStageMask(&wait_stage_mask)
+        .commandBufferCount(1)
+        .pCommandBuffers(&cmd)
+        .build();
+
+    device.queue_submit(0, &submit_info, 1, fence);
+    device.wait_for_fence(1, &fence, true, u64::MAX);
+
+    let new_mapped = host_buffer.map_memory(0, host_buffer.vksize(), 0).unwrap();
+    let mapped_ranges = VkMappedMemoryRangeBuilder::new()
+        .memory(host_buffer.memory)
+        .offset(0)
+        .size(host_buffer.vksize())
+        .build();
+    host_buffer.invalidate_mapped_memory_ranges(1, &mapped_ranges);
+
+    println!("{:?}", new_mapped);
+    host_buffer.unmap_memory();
 
     Ok(())
 }
