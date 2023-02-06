@@ -854,6 +854,8 @@ impl<'a, T> Buffer<'a, T> {
             // array.set_len(self.data.len());
 
             let mut array = vec![2013; self.data.len()];
+            let mut array_ptr_c_void= array.as_mut_ptr() as *mut c_void;
+            let mut array_ptr_ptr = &mut array_ptr_c_void.clone() as *mut *mut c_void;
 
             vk_assert(vkMapMemory(
                 *self.device,
@@ -861,8 +863,12 @@ impl<'a, T> Buffer<'a, T> {
                 offset,
                 size,
                 flags,
-                &mut (array.as_mut_ptr() as *mut c_void),
+                array_ptr_ptr,
             ));
+
+            // println!("{:?}", array_ptr_c_void);
+            // println!("{:?}", array_ptr_c_void.clone());
+            // println!("{:?}", array_ptr_ptr);
 
             // array.copy_from_slice(self.data.as_slice());
 

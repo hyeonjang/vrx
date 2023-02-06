@@ -43,17 +43,14 @@ fn main() -> Result<()> {
         )
         .unwrap();
     device_buffer.alloc(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    let device_mapped = device_buffer
-        .map_memory(0, device_buffer.vksize(), 0)
-        .unwrap();
     device_buffer.bind_buffer_memory(0);
 
     // commands
-    let cmd = device
+    let cmd_copy = device
         .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
         .unwrap();
     vkCmdBlock! {
-        THIS cmd;
+        THIS cmd_copy;
 
         let buffer_copy = VkBufferCopy { srcOffset: 0, dstOffset: 0, size: host_buffer.vksize() };
         COPY_BUFFER(host_buffer.as_raw(), device_buffer.as_raw(), 1, &buffer_copy);
@@ -61,7 +58,7 @@ fn main() -> Result<()> {
 
     let submit_info = VkSubmitInfoBuilder::new()
         .commandBufferCount(1 as u32)
-        .pCommandBuffers(&cmd)
+        .pCommandBuffers(&cmd_copy)
         .waitSemaphoreCount(0)
         .build();
 
@@ -70,8 +67,18 @@ fn main() -> Result<()> {
     device.queue_submit(0, &submit_info, 1, fence);
     device.wait_for_fence(1, &fence, true, u64::MAX);
     device.destroy_fence(fence, None);
-    device.free_commands_buffers(1, &cmd);
+    device.free_commands_buffers(1, &cmd_copy);
 
+    let device_mapped = device_buffer.map_memory(0, device_buffer.vksize(), 0).unwrap();
+    let mut mapped = vec![12;32];
+
+    println!("debug {:?}", device_mapped.as_ptr());
+
+    mapped.copy_from_slice(device_mapped.as_slice());
+    device_buffer.unmap_memory();
+
+    println!("{:?}", device_buffer.data);
+    println!("{:?}", device_mapped);
     //
     // construct compute pipeline
     //
@@ -199,7 +206,7 @@ fn main() -> Result<()> {
         PIPELINE_BARRIER(
             VK_PIPELINE_STAGE_TRANSFER_BIT,
             VK_PIPELINE_STAGE_HOST_BIT,
-            0, 0, null(), 1,
+            0, 0, null(), 1, 
             &buffer_barrier2, 0, null()
         );
     };
