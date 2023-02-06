@@ -14,29 +14,21 @@ use std::sync::{Mutex, Once};
 
 use anyhow::*;
 use paste::paste;
-use regex::{Regex, RegexSet};
 
 use phf::phf_map;
 
 pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf_map! {
+    "VkWriteDescriptorSet" => VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
     "VkCommandBufferBeginInfo" => VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     "VkSubmitInfo" => VK_STRUCTURE_TYPE_SUBMIT_INFO,
     "VkFenceCreateInfo" => VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    "VkMappedMemoryRange" => VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
     "VkBufferMemoryBarrier" => VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
     "VkPipelineCacheCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
     "VkPipelineLayoutCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    "VkPipelineShaderStageCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
     "VkComputePipelineCreateInfo" => VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 };
-
-macro_rules! impl_default_for_vk_pointer_t {
-    ( $x:ident ) => {
-        impl Default for $x {
-            fn default() -> $x {
-                $x { _unused: [0; 0] }
-            }
-        }
-    };
-}
 
 macro_rules! impl_builder_for_vk_structure_t {
     ( $type_:ty, $($field:ident: $field_type:ty $(,)?)* ) => {
@@ -81,25 +73,110 @@ macro_rules! impl_builder_for_vk_structure_t {
     };
 }
 
-#[macro_export]
-macro_rules! load_spv {
-    ( $x:tt ) => {{
-        include_bytes!(x)
-    }};
-}
+// InfoBuilder implementations
+impl_builder_for_vk_structure_t!(
+    VkWriteDescriptorSet,
+    pNext: *const ::std::os::raw::c_void,
+    dstSet: VkDescriptorSet,
+    dstBinding: u32,
+    dstArrayElement: u32,
+    descriptorCount: u32,
+    descriptorType: VkDescriptorType,
+    pImageInfo: *const VkDescriptorImageInfo,
+    pBufferInfo: *const VkDescriptorBufferInfo,
+    pTexelBufferView: *const VkBufferView,
+);
 
-#[macro_export]
-macro_rules! vk_instantiate {
-    ( $x:ident ) => {{
-        use paste::paste;
+impl_builder_for_vk_structure_t!(
+    VkCommandBufferBeginInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkCommandBufferUsageFlags,
+    pInheritanceInfo: *const VkCommandBufferInheritanceInfo,
+);
 
-        paste! {
-            let mut type_T = [<$x _T>]::default();
-            let mut type_inst : *mut [<$x _T>] = &mut type_T;
+impl_builder_for_vk_structure_t!(
+    VkSubmitInfo,
+    waitSemaphoreCount: u32,
+    pWaitSemaphores: *const VkSemaphore,
+    pWaitDstStageMask: *const VkPipelineStageFlags,
+    commandBufferCount: u32,
+    pCommandBuffers: *const VkCommandBuffer,
+    signalSemaphoreCount: u32,
+    pSignalSemaphores: *const VkSemaphore,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkFenceCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkFenceCreateFlags,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkPipelineCacheCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkPipelineCacheCreateFlags,
+    initialDataSize: usize,
+    pInitialData: *const ::std::os::raw::c_void,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkPipelineShaderStageCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkPipelineShaderStageCreateFlags,
+    stage: VkShaderStageFlagBits,
+    module: VkShaderModule,
+    pName: *const ::std::os::raw::c_char,
+    pSpecializationInfo: *const VkSpecializationInfo,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkPipelineLayoutCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkPipelineLayoutCreateFlags,
+    setLayoutCount: u32,
+    pSetLayouts: *const VkDescriptorSetLayout,
+    pushConstantRangeCount: u32,
+    pPushConstantRanges: *const VkPushConstantRange,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkComputePipelineCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkPipelineCreateFlags,
+    stage: VkPipelineShaderStageCreateInfo,
+    layout: VkPipelineLayout,
+    basePipelineHandle: VkPipeline,
+    basePipelineIndex: i32,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkMappedMemoryRange,
+    pNext: *const ::std::os::raw::c_void,
+    memory: VkDeviceMemory,
+    offset: VkDeviceSize,
+    size: VkDeviceSize,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkBufferMemoryBarrier,
+    pNext: *const ::std::os::raw::c_void,
+    srcAccessMask: VkAccessFlags,
+    dstAccessMask: VkAccessFlags,
+    srcQueueFamilyIndex: u32,
+    dstQueueFamilyIndex: u32,
+    buffer: VkBuffer,
+    offset: VkDeviceSize,
+    size: VkDeviceSize,
+);
+
+macro_rules! impl_default_for_vk_pointer_t {
+    ( $x:ident ) => {
+        impl Default for $x {
+            fn default() -> $x {
+                $x { _unused: [0; 0] }
+            }
         }
-
-        type_inst
-    }};
+    };
 }
 
 impl_default_for_vk_pointer_t!(VkBuffer_T);
@@ -128,62 +205,26 @@ impl_default_for_vk_pointer_t!(VkDescriptorPool_T);
 impl_default_for_vk_pointer_t!(VkFramebuffer_T);
 impl_default_for_vk_pointer_t!(VkCommandPool_T);
 
-// InfoBuilder implementations
-impl_builder_for_vk_structure_t!(
-    VkCommandBufferBeginInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkCommandBufferUsageFlags,
-    pInheritanceInfo: *const VkCommandBufferInheritanceInfo,
-);
+#[macro_export]
+macro_rules! load_spv {
+    ( $x:tt ) => {{
+        include_bytes!(x)
+    }};
+}
 
-impl_builder_for_vk_structure_t!(
-    VkSubmitInfo,
-    waitSemaphoreCount: u32,
-    pWaitSemaphores: *const VkSemaphore,
-    pWaitDstStageMask: *const VkPipelineStageFlags,
-    commandBufferCount: u32,
-    pCommandBuffers: *const VkCommandBuffer,
-    signalSemaphoreCount: u32,
-    pSignalSemaphores: *const VkSemaphore,
-);
+#[macro_export]
+macro_rules! vk_instantiate {
+    ( $x:ident ) => {{
+        use paste::paste;
 
-impl_builder_for_vk_structure_t!(
-    VkFenceCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkFenceCreateFlags,
-);
+        paste! {
+            let mut type_T = [<$x _T>]::default();
+            let mut type_inst : *mut [<$x _T>] = &mut type_T;
+        }
 
-impl_builder_for_vk_structure_t!(
-    VkPipelineLayoutCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkPipelineLayoutCreateFlags,
-    setLayoutCount: u32,
-    pSetLayouts: *const VkDescriptorSetLayout,
-    pushConstantRangeCount: u32,
-    pPushConstantRanges: *const VkPushConstantRange,
-);
-
-impl_builder_for_vk_structure_t!(
-    VkComputePipelineCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkPipelineCreateFlags,
-    stage: VkPipelineShaderStageCreateInfo,
-    layout: VkPipelineLayout,
-    basePipelineHandle: VkPipeline,
-    basePipelineIndex: i32,
-);
-
-impl_builder_for_vk_structure_t!(
-    VkBufferMemoryBarrier,
-    pNext: *const ::std::os::raw::c_void,
-    srcAccessMask: VkAccessFlags,
-    dstAccessMask: VkAccessFlags,
-    srcQueueFamilyIndex: u32,
-    dstQueueFamilyIndex: u32,
-    buffer: VkBuffer,
-    offset: VkDeviceSize,
-    size: VkDeviceSize,
-);
+        type_inst
+    }};
+}
 
 pub fn vk_assert(result: VkResult) {
     assert!(result == VkResult::VK_SUCCESS, "VkResult: {:?}", result);
@@ -322,21 +363,30 @@ pub trait VkWrapper<T> {
     type VkStruct;
 
     fn as_raw(&self) -> Self::VkStruct;
+    fn as_raw_ptr(&self) -> &Self::VkStruct;
 }
 
 impl<T> VkWrapper<T> for Device {
     type VkStruct = VkDevice;
 
-    fn as_raw(&self) -> VkDevice {
+    fn as_raw(&self) -> Self::VkStruct {
         self.self_
+    }
+
+    fn as_raw_ptr(&self) -> &Self::VkStruct {
+        &self.self_
     }
 }
 
 impl<'a, T> VkWrapper<T> for Buffer<'a, T> {
     type VkStruct = VkBuffer;
 
-    fn as_raw(&self) -> VkBuffer {
+    fn as_raw(&self) -> Self::VkStruct {
         self.buffer
+    }
+
+    fn as_raw_ptr(&self) -> &Self::VkStruct {
+        &self.buffer
     }
 }
 
@@ -445,8 +495,8 @@ impl Device {
         }
     }
 
-    // 
-    // vkqueues 
+    //
+    // vkqueues
     pub fn get_queue(&self, index: usize) -> Result<VkQueue> {
         let mut queue = vk_instantiate!(VkQueue);
         unsafe {
@@ -530,6 +580,12 @@ impl Device {
     }
 
     //
+    // descriptor
+    pub fn create_descriptor(&self, set_count: u32) -> Result<Descriptor> {
+        Ok(Descriptor::new(set_count, &self.self_))
+    }
+
+    //
     // command buffer
     pub fn allocate_command_buffer(&self, level: VkCommandBufferLevel) -> Result<VkCommandBuffer> {
         let mut cmd_buf = vk_instantiate!(VkCommandBuffer);
@@ -608,7 +664,13 @@ impl Device {
             ));
         }
     }
-        
+
+    pub fn reset_fence(&self, fence_count: u32, p_fences: *const VkFence) {
+        unsafe {
+            vkResetFences(self.self_, fence_count, p_fences);
+        }
+    }
+
     pub fn destroy_fence(&self, fence: VkFence, p_allocator: Option<*const VkAllocationCallbacks>) {
         unsafe {
             if let Some(p) = p_allocator {
@@ -617,7 +679,7 @@ impl Device {
                 vkDestroyFence(self.self_, fence, null());
             }
         }
-    } 
+    }
 
     pub fn free_commands_buffers(
         &self,
@@ -631,15 +693,71 @@ impl Device {
                 command_buffer_count,
                 p_command_buffers,
             )
-    } 
+        }
+    }
+
+    pub fn create_pipeline_cache(
+        &self,
+        pipeline_cache_create_info: *const VkPipelineCacheCreateInfo,
+    ) -> Result<VkPipelineCache> {
+        let mut pipeline_cache = vk_instantiate!(VkPipelineCache);
+
+        unsafe {
+            vk_assert(vkCreatePipelineCache(
+                self.self_,
+                pipeline_cache_create_info,
+                null(),
+                &mut pipeline_cache,
+            ));
+        }
+        Ok(pipeline_cache)
+    }
+
+    pub fn create_pipeline_layout(
+        &self,
+        pipeline_layout_create_info: *const VkPipelineLayoutCreateInfo,
+    ) -> Result<VkPipelineLayout> {
+        let mut pipeline_layout = vk_instantiate!(VkPipelineLayout);
+
+        unsafe {
+            vk_assert(vkCreatePipelineLayout(
+                self.self_,
+                pipeline_layout_create_info,
+                null(),
+                &mut pipeline_layout,
+            ));
+        }
+        Ok(pipeline_layout)
+    }
+
+    pub fn create_compute_pipelines(
+        &self,
+        pipeline_cache: VkPipelineCache,
+        create_info_count: u32,
+        pipeline_create_infos: *const VkComputePipelineCreateInfo,
+    ) -> Result<Vec<VkPipeline>> {
+        let mut pipelines = vec![vk_instantiate!(VkPipeline); create_info_count as usize];
+
+        unsafe {
+            vk_assert(vkCreateComputePipelines(
+                self.self_,
+                pipeline_cache,
+                create_info_count,
+                pipeline_create_infos,
+                null(),
+                pipelines.as_mut_ptr(),
+            ));
+        }
+
+        Ok(pipelines)
     }
 }
 
 pub struct Buffer<'a, T> {
     device: &'a VkDevice,
     buffer: VkBuffer,
-    memory: VkDeviceMemory,
-    data: Vec<T>,
+    pub memory: VkDeviceMemory,
+    pub data: Vec<T>,
 }
 
 impl<'a, T> Buffer<'a, T> {
@@ -671,6 +789,10 @@ impl<'a, T> Buffer<'a, T> {
             data: data,
             device: device,
         }
+    }
+
+    pub fn vksize(&self) -> VkDeviceSize {
+        (self.data.len() * size_of::<T>()) as VkDeviceSize
     }
 
     pub fn alloc(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
@@ -721,17 +843,30 @@ impl<'a, T> Buffer<'a, T> {
         }
     }
 
-    pub fn map_memory(&self, offset: u64, size: u64, flags: u32) {
+    // pub fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<Vec<T>>
+    pub fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<Vec<i32>>
+    // where
+        // T: Copy,
+    {
         unsafe {
-            let mut mapped: *mut c_void = null_mut();
+            // let mut mapped: *mut c_void = null_mut();
+            // let mut array: Vec<T> = Vec::<T>::with_capacity(self.data.len());
+            // array.set_len(self.data.len());
+
+            let mut array = vec![2013; self.data.len()];
+
             vk_assert(vkMapMemory(
                 *self.device,
                 self.memory,
                 offset,
                 size,
                 flags,
-                &mut mapped,
+                &mut (array.as_mut_ptr() as *mut c_void),
             ));
+
+            // array.copy_from_slice(self.data.as_slice());
+
+            Ok(array)
         }
     }
 
@@ -739,7 +874,27 @@ impl<'a, T> Buffer<'a, T> {
         unsafe {
             vkUnmapMemory(*self.device, self.memory);
         }
-    } 
+    }
+
+    pub fn flush_mapped_memory_range(
+        &self,
+        memory_range_count: u32,
+        p_memory_ranges: *const VkMappedMemoryRange,
+    ) {
+        unsafe {
+            vkFlushMappedMemoryRanges(*self.device, memory_range_count, p_memory_ranges);
+        }
+    }
+
+    pub fn invalidate_mapped_memory_ranges(
+        &self,
+        memory_range_count: u32,
+        p_memory_ranges: *const VkMappedMemoryRange,
+    ) {
+        unsafe {
+            vkInvalidateMappedMemoryRanges(*self.device, memory_range_count, p_memory_ranges);
+        }
+    }
 
     pub fn bind_buffer_memory(&self, offset: VkDeviceSize) {
         unsafe {
@@ -867,7 +1022,7 @@ macro_rules! vkCmdBlock {
     // * 'cmd' - command buffer instance
     // * 'function' - command function for command buffer
     (THIS $cmd:expr; $function:ident($($args:expr),*);  $($tail:tt)*) => {
-        
+
         let begin_info = VkCommandBufferBeginInfoBuilder::new()
         .flags(0)
         .build();
@@ -917,9 +1072,9 @@ macro_rules! vkCmdBlock {
     // empty
     (@tt_recursion $cmd:expr,) => {};
 
-    // 
+    //
     // Parse the Vulkan All Commands
-    // 
+    //
     // * '@inner' - identifier for inner macro
     // * 'cmd' - command buffer instance
     // * 'function' - command function for command buffer
@@ -933,7 +1088,7 @@ macro_rules! vkCmdBlock {
                 $descriptor_set_count:expr,
                 $p_descriptor_sets:expr,
                 $dynamic_offset_count:expr,
-                $p_dynamic_offsets:expr    
+                $p_dynamic_offsets:expr
             )) => {
                 vkCmdBindDescriptorSets(
                     $cmd,
@@ -949,25 +1104,19 @@ macro_rules! vkCmdBlock {
 
             (BIND_PIPELINE($pipeline_bind_point:expr, $pipeline:expr)) => {
                 vkCmdBindPipeline(
-                    $cmd, 
+                    $cmd,
                     $pipeline_bind_point,
-                    $pipeline, 
+                    $pipeline,
                 );
             };
 
-            (COPY_BUFFER($source:expr, $target:expr, $num:expr, $buffer_copy_list:expr)) => {
-                let bufferCopy = VkBufferCopy {
-                    srcOffset: $buffer_copy_list[0],
-                    dstOffset: $buffer_copy_list[1],
-                    size: $buffer_copy_list[2],
-                };
-
-                vkCmdCopyBuffer($cmd, $source, $target, $num, &bufferCopy);
+            (COPY_BUFFER($source:expr, $target:expr, $num:expr, $buffer_copy:expr)) => {
+                vkCmdCopyBuffer($cmd, $source, $target, $num, $buffer_copy);
             };
 
             (DISPATCH(
-                $group_count_x:expr, 
-                $group_count_y:expr, 
+                $group_count_x:expr,
+                $group_count_y:expr,
                 $group_count_z:expr)) => {
                     vkCmdDispatch(
                         $cmd,
@@ -999,7 +1148,7 @@ macro_rules! vkCmdBlock {
                     $p_image_memory_barriers
                 );
             };
-            
+
 
         } // the end of macro_rules! "inner"
         inner!($function($($args),*));
