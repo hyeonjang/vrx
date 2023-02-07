@@ -195,24 +195,24 @@ fn main() -> Result<()> {
             &buffer_barrier1, 0, null()
         );
 
-        // let buffer_copy = VkBufferCopy { srcOffset: 0, dstOffset: 0, size: device_buffer.vksize() };
-        // COPY_BUFFER(device_buffer.as_raw(), host_buffer.as_raw(), 1, &buffer_copy);
+        let buffer_copy = VkBufferCopy { srcOffset: 0, dstOffset: 0, size: device_buffer.vksize() };
+        COPY_BUFFER(device_buffer.as_raw(), host_buffer.as_raw(), 1, &buffer_copy);
 
-        // let buffer_barrier2 = VkBufferMemoryBarrierBuilder::new()
-        //     .buffer(host_buffer.as_raw())
-        //     .size(VK_WHOLE_SIZE as u64)
-        //     .srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT.try_into().unwrap())
-        //     .dstAccessMask(VK_ACCESS_HOST_READ_BIT.try_into().unwrap())
-        //     .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
-        //     .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
-        //     .build();
+        let buffer_barrier2 = VkBufferMemoryBarrierBuilder::new()
+            .buffer(host_buffer.as_raw())
+            .size(VK_WHOLE_SIZE as u64)
+            .srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT.try_into().unwrap())
+            .dstAccessMask(VK_ACCESS_HOST_READ_BIT.try_into().unwrap())
+            .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
+            .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
+            .build();
 
-        // PIPELINE_BARRIER(
-        //     VK_PIPELINE_STAGE_TRANSFER_BIT,
-        //     VK_PIPELINE_STAGE_HOST_BIT,
-        //     0, 0, null(), 1,
-        //     &buffer_barrier2, 0, null()
-        // );
+        PIPELINE_BARRIER(
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_HOST_BIT,
+            0, 0, null(), 1,
+            &buffer_barrier2, 0, null()
+        );
     };
     let fence_create_info = VkFenceCreateInfoBuilder::new()
         .flags(VK_FENCE_CREATE_SIGNALED_BIT.try_into().unwrap())

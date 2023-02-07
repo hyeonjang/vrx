@@ -337,6 +337,24 @@ impl Context {
             physical_devices: physical_devices,
         }
     }
+
+    pub fn get_physical_device_memory_properties(&self) -> VkPhysicalDeviceMemoryProperties{
+        let mut mem_prop = VkPhysicalDeviceMemoryProperties {
+            memoryTypeCount: 0,
+            memoryTypes: [VkMemoryType {
+                propertyFlags: 0,
+                heapIndex: 0,
+            }; 32],
+            memoryHeapCount: 0,
+            memoryHeaps: [VkMemoryHeap { size: 0, flags: 0 }; 16],
+        };
+
+        unsafe {
+            vkGetPhysicalDeviceMemoryProperties(self.physical_devices[0], &mut mem_prop);
+        }
+        mem_prop
+    }
+
 }
 
 impl Default for Context {
@@ -760,7 +778,39 @@ pub trait Memory {
     fn memory(&self) -> &VkDeviceMemory;
 
     /// functional
-    // fn allocate_memory(&self);
+    fn get_memory_requirements(&self) -> Result<VkMemoryRequirements>;
+    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
+        let ctx = vulkan_context();
+
+        let mut mem_prop = ctx.get_physical_device_memory_properties();
+        let mut mem_req = self.get_memory_requirements().unwrap();
+        unsafe {
+            let mut mem_alloc_info = VkMemoryAllocateInfo {
+                sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                pNext: null(),
+                allocationSize: mem_req.size,
+                memoryTypeIndex: 0,
+            };
+
+            for i in 0..mem_prop.memoryTypeCount {
+                if mem_req.memoryTypeBits & 1 == 1 {
+                    if mem_prop.memoryTypes[i as usize].propertyFlags
+                        & mem_prop_flags as VkMemoryPropertyFlags
+                        == mem_prop_flags as VkMemoryPropertyFlags
+                    {
+                        mem_alloc_info.memoryTypeIndex = i;
+                    }
+                }
+            }
+            vk_assert(vkAllocateMemory(
+                *self.device,
+                &mut mem_alloc_info,
+                null(),
+                &mut self.memory,
+            ));
+        }
+    }
+
     fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<Vec<i32>> {
         unsafe {
             // let mut mapped: *mut c_void = null_mut();
@@ -820,6 +870,32 @@ impl<'a, T> Memory for Buffer<'a, T> {
     fn memory(&self) -> &VkDeviceMemory {
         &self.memory
     }
+
+    fn get_memory_requirements(&self) -> Result<VkMemoryRequirements> {
+        let ctx = vulkan_context();
+        unsafe {
+            // dummy
+            let mut mem_prop = VkPhysicalDeviceMemoryProperties {
+                memoryTypeCount: 0,
+                memoryTypes: [VkMemoryType {
+                    propertyFlags: 0,
+                    heapIndex: 0,
+                }; 32],
+                memoryHeapCount: 0,
+                memoryHeaps: [VkMemoryHeap { size: 0, flags: 0 }; 16],
+            };
+            vkGetPhysicalDeviceMemoryProperties(ctx.physical_devices[0], &mut mem_prop);
+
+            let mut mem_req = VkMemoryRequirements {
+                size: 0,
+                alignment: 0,
+                memoryTypeBits: 0,
+            };
+            vkGetBufferMemoryRequirements(*self.device(), self.buffer, &mut mem_req);
+            
+            Ok(mem_req)
+        }
+    }
 }
 
 impl<'a, T> Buffer<'a, T> {
@@ -867,53 +943,6 @@ impl<'a, T> Buffer<'a, T> {
         }
     }
 
-    pub fn alloc(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
-        let ctx = vulkan_context();
-        unsafe {
-            // dummy
-            let mut mem_prop = VkPhysicalDeviceMemoryProperties {
-                memoryTypeCount: 0,
-                memoryTypes: [VkMemoryType {
-                    propertyFlags: 0,
-                    heapIndex: 0,
-                }; 32],
-                memoryHeapCount: 0,
-                memoryHeaps: [VkMemoryHeap { size: 0, flags: 0 }; 16],
-            };
-            vkGetPhysicalDeviceMemoryProperties(ctx.physical_devices[0], &mut mem_prop);
-
-            let mut mem_req = VkMemoryRequirements {
-                size: 0,
-                alignment: 0,
-                memoryTypeBits: 0,
-            };
-            vkGetBufferMemoryRequirements(*self.device, self.buffer, &mut mem_req);
-
-            let mut mem_alloc_info = VkMemoryAllocateInfo {
-                sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                pNext: null(),
-                allocationSize: mem_req.size,
-                memoryTypeIndex: 0,
-            };
-
-            for i in 0..mem_prop.memoryTypeCount {
-                if mem_req.memoryTypeBits & 1 == 1 {
-                    if mem_prop.memoryTypes[i as usize].propertyFlags
-                        & mem_prop_flags as VkMemoryPropertyFlags
-                        == mem_prop_flags as VkMemoryPropertyFlags
-                    {
-                        mem_alloc_info.memoryTypeIndex = i;
-                    }
-                }
-            }
-            vk_assert(vkAllocateMemory(
-                *self.device,
-                &mut mem_alloc_info,
-                null(),
-                &mut self.memory,
-            ));
-        }
-    }
 
     pub fn unmap_memory(&self) {
         unsafe {
