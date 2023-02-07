@@ -8,7 +8,7 @@ const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 fn main() -> Result<()> {
     let device = Device::new();
 
-    let host_data:Vec<i32> = (0..32).collect();
+    let host_data: Vec<i32> = (0..32).collect();
     let device_data = vec![0; 32];
     let mut host_buffer = device
         .create_buffer(
@@ -26,9 +26,9 @@ fn main() -> Result<()> {
 
     host_buffer.map_memory(0, host_buffer.vksize(), 0);
     let mapped_range = VkMappedMemoryRangeBuilder::new()
-        .memory(host_buffer.memory)
+        .memory(*host_buffer.memory())
         .offset(0)
-        .size(host_buffer.vksize())
+        .size(VK_WHOLE_SIZE as u64)
         .build();
     host_buffer.flush_mapped_memory_range(1, &mapped_range);
     host_buffer.unmap_memory();
@@ -69,10 +69,13 @@ fn main() -> Result<()> {
     device.destroy_fence(fence, None);
     device.free_commands_buffers(1, &cmd_copy);
 
-    let device_mapped = device_buffer.map_memory(0, device_buffer.vksize(), 0).unwrap();
-    let mut mapped = vec![12;32];
+    let device_mapped = device_buffer
+        .map_memory(0, device_buffer.vksize(), 0)
+        .unwrap();
+    let mut mapped = vec![12; 32];
 
     println!("debug {:?}", device_mapped.as_ptr());
+    println!("debug {:?}", device_mapped);
 
     mapped.copy_from_slice(device_mapped.as_slice());
     device_buffer.unmap_memory();
@@ -91,8 +94,9 @@ fn main() -> Result<()> {
 
     let write_desc_set = VkWriteDescriptorSetBuilder::new()
         .dstSet(descriptor.sets[0])
-        .descriptorCount(1)
+        .dstBinding(0)
         .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+        .descriptorCount(1)
         .pBufferInfo(&buffer_descriptor)
         .build();
     descriptor.update(vec![write_desc_set]);
@@ -146,11 +150,11 @@ fn main() -> Result<()> {
 
         let buffer_barrier0 = VkBufferMemoryBarrierBuilder::new()
             .buffer(device_buffer.as_raw())
-            .size(device_buffer.vksize()) //?? bug? VK_WHOLE_SIZE CHECKING needed
+            .size(VK_WHOLE_SIZE as u64) //?? bug? VK_WHOLE_SIZE CHECKING needed
             .srcAccessMask(VK_ACCESS_HOST_WRITE_BIT.try_into().unwrap())
             .dstAccessMask(VK_ACCESS_SHADER_READ_BIT.try_into().unwrap())
-            .srcQueueFamilyIndex(device.queue_family_index)
-            .dstQueueFamilyIndex(device.queue_family_index)
+            .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
+            .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
             .build();
 
         PIPELINE_BARRIER(
@@ -177,11 +181,11 @@ fn main() -> Result<()> {
 
         let buffer_barrier1 = VkBufferMemoryBarrierBuilder::new()
             .buffer(device_buffer.as_raw())
-            .size(device_buffer.vksize())
+            .size(VK_WHOLE_SIZE as u64)
             .srcAccessMask(VK_ACCESS_SHADER_WRITE_BIT.try_into().unwrap())
             .dstAccessMask(VK_ACCESS_TRANSFER_READ_BIT.try_into().unwrap())
-            .srcQueueFamilyIndex(device.queue_family_index)
-            .dstQueueFamilyIndex(device.queue_family_index)
+            .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
+            .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
             .build();
 
         PIPELINE_BARRIER(
@@ -191,24 +195,24 @@ fn main() -> Result<()> {
             &buffer_barrier1, 0, null()
         );
 
-        let buffer_copy = VkBufferCopy { srcOffset: 0, dstOffset: 0, size: device_buffer.vksize() };
-        COPY_BUFFER(device_buffer.as_raw(), host_buffer.as_raw(), 1, &buffer_copy);
+        // let buffer_copy = VkBufferCopy { srcOffset: 0, dstOffset: 0, size: device_buffer.vksize() };
+        // COPY_BUFFER(device_buffer.as_raw(), host_buffer.as_raw(), 1, &buffer_copy);
 
-        let buffer_barrier2 = VkBufferMemoryBarrierBuilder::new()
-            .buffer(host_buffer.as_raw())
-            .size(host_buffer.vksize())
-            .srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT.try_into().unwrap())
-            .dstAccessMask(VK_ACCESS_HOST_READ_BIT.try_into().unwrap())
-            .srcQueueFamilyIndex(device.queue_family_index)
-            .dstQueueFamilyIndex(device.queue_family_index)
-            .build();
+        // let buffer_barrier2 = VkBufferMemoryBarrierBuilder::new()
+        //     .buffer(host_buffer.as_raw())
+        //     .size(VK_WHOLE_SIZE as u64)
+        //     .srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT.try_into().unwrap())
+        //     .dstAccessMask(VK_ACCESS_HOST_READ_BIT.try_into().unwrap())
+        //     .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
+        //     .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
+        //     .build();
 
-        PIPELINE_BARRIER(
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_HOST_BIT,
-            0, 0, null(), 1, 
-            &buffer_barrier2, 0, null()
-        );
+        // PIPELINE_BARRIER(
+        //     VK_PIPELINE_STAGE_TRANSFER_BIT,
+        //     VK_PIPELINE_STAGE_HOST_BIT,
+        //     0, 0, null(), 1,
+        //     &buffer_barrier2, 0, null()
+        // );
     };
     let fence_create_info = VkFenceCreateInfoBuilder::new()
         .flags(VK_FENCE_CREATE_SIGNALED_BIT.try_into().unwrap())
@@ -226,16 +230,21 @@ fn main() -> Result<()> {
     device.queue_submit(0, &submit_info, 1, fence);
     device.wait_for_fence(1, &fence, true, u64::MAX);
 
-    let new_mapped = host_buffer.map_memory(0, host_buffer.vksize(), 0).unwrap();
-    let mapped_ranges = VkMappedMemoryRangeBuilder::new()
-        .memory(host_buffer.memory)
-        .offset(0)
-        .size(host_buffer.vksize())
-        .build();
-    host_buffer.invalidate_mapped_memory_ranges(1, &mapped_ranges);
+    let new_mapped = host_buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0).unwrap();
+    // let mapped_ranges = VkMappedMemoryRangeBuilder::new()
+    // .memory(host_buffer.memory)
+    //     .offset(0)
+    //     .size(host_buffer.vksize())
+    //     .build();
+    // host_buffer.invalidate_mapped_memory_ranges(1, &mapped_ranges);
 
-    println!("{:?}", new_mapped);
+    let mut finalle = vec![2021; 32];
+    println!("finalle {:?}", finalle);
+    finalle.copy_from_slice(new_mapped.as_slice());
+    println!("finalle {:?}", finalle);
     host_buffer.unmap_memory();
 
+    host_buffer.free_memory(None);
+    host_buffer.destroy(None);
     Ok(())
 }
