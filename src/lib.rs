@@ -753,11 +753,73 @@ impl Device {
     }
 }
 
+pub trait Memory {
+
+    // trait getter
+    fn device(&self) -> &VkDevice;
+    fn memory(&self) -> &VkDeviceMemory;
+
+    /// functional
+    // fn allocate_memory(&self);
+    fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<Vec<i32>> {
+        unsafe {
+            // let mut mapped: *mut c_void = null_mut();
+            // let mut array: Vec<T> = Vec::<T>::with_capacity(self.data.len());
+            // array.set_len(self.data.len());
+
+            let mut array = vec![2013; 32];
+            let mut array_ptr_c_void = array.as_mut_ptr() as *mut c_void;
+            let mut array_ptr_ptr = &mut array_ptr_c_void.clone() as *mut *mut c_void;
+
+            println!("turn {:?}", array.as_ptr());
+            println!("tued {:?}", array_ptr_c_void);
+            println!("clon {:?}", array_ptr_c_void.clone());
+            println!("mutt {:?}", array_ptr_ptr);
+
+            vk_assert(vkMapMemory(
+                *self.device(),
+                *self.memory(),
+                offset,
+                size,
+                flags,
+                array_ptr_ptr,
+            ));
+
+            // println!("{:?}", array_ptr_c_void);
+            // println!("{:?}", array_ptr_c_void.clone());
+            // println!("{:?}", array_ptr_ptr);
+            // array.copy_from_slice(self.data.as_slice());
+
+            Ok(array)
+        }
+    }
+
+    fn free_memory(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
+        unsafe {
+            if let Some(p) = p_allocator {
+                vkFreeMemory(*self.device(), *self.memory(), p);
+            } else {
+                vkFreeMemory(*self.device(), *self.memory(), null());
+            }
+        }
+    }
+}
+
 pub struct Buffer<'a, T> {
     device: &'a VkDevice,
     buffer: VkBuffer,
-    pub memory: VkDeviceMemory,
+    memory: VkDeviceMemory,
     pub data: Vec<T>,
+}
+
+impl<'a, T> Memory for Buffer<'a, T> {
+    fn device(&self) -> &VkDevice {
+        self.device
+    }
+
+    fn memory(&self) -> &VkDeviceMemory {
+        &self.memory
+    }
 }
 
 impl<'a, T> Buffer<'a, T> {
@@ -793,6 +855,16 @@ impl<'a, T> Buffer<'a, T> {
 
     pub fn vksize(&self) -> VkDeviceSize {
         (self.data.len() * size_of::<T>()) as VkDeviceSize
+    }
+
+    pub fn destroy(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
+        unsafe {
+            if let Some(p) = p_allocator {
+                vkDestroyBuffer(*self.device, self.buffer, p);
+            } else {
+                vkDestroyBuffer(*self.device, self.buffer, null());
+            }
+        }
     }
 
     pub fn alloc(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
@@ -840,39 +912,6 @@ impl<'a, T> Buffer<'a, T> {
                 null(),
                 &mut self.memory,
             ));
-        }
-    }
-
-    // pub fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<Vec<T>>
-    pub fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<Vec<i32>>
-    // where
-        // T: Copy,
-    {
-        unsafe {
-            // let mut mapped: *mut c_void = null_mut();
-            // let mut array: Vec<T> = Vec::<T>::with_capacity(self.data.len());
-            // array.set_len(self.data.len());
-
-            let mut array = vec![2013; self.data.len()];
-            let mut array_ptr_c_void= array.as_mut_ptr() as *mut c_void;
-            let mut array_ptr_ptr = &mut array_ptr_c_void.clone() as *mut *mut c_void;
-
-            vk_assert(vkMapMemory(
-                *self.device,
-                self.memory,
-                offset,
-                size,
-                flags,
-                array_ptr_ptr,
-            ));
-
-            // println!("{:?}", array_ptr_c_void);
-            // println!("{:?}", array_ptr_c_void.clone());
-            // println!("{:?}", array_ptr_ptr);
-
-            // array.copy_from_slice(self.data.as_slice());
-
-            Ok(array)
         }
     }
 
