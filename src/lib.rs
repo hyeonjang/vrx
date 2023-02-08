@@ -3,7 +3,7 @@
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-include!("bindings.rs");
+include!("vulkan_header.rs");
 
 use std::any::{type_name, Any};
 use std::ffi::*;
