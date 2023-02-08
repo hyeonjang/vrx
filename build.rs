@@ -2,6 +2,16 @@ extern crate bindgen;
 
 use std::env;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn compile_shader() {
+    let args = [
+        "./src/shader/cholesky.comp",
+        "-o",
+        "./src/shader/cholesky.spv",
+    ];
+    Command::new("glslc").args(&args).output().expect("failed");
+}
 
 fn main() {
     // check env
@@ -34,6 +44,9 @@ fn main() {
         .expect("Unable to generate bindings");
     let out_path = PathBuf::from("./src");
     bindings
-        .write_to_file(out_path.join("bindings.rs"))
+        .write_to_file(out_path.join("vulkan_header.rs"))
         .expect("Couldn't write bindings!");
+
+    // spv generation
+    compile_shader();
 }
