@@ -1,7 +1,6 @@
 use anyhow::*;
-use std::ffi::*;
-use std::ptr::*;
 use vkcholesky::*;
+use std::{ptr::copy_nonoverlapping as memcpy, mem::MaybeUninit};
 
 const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 
@@ -9,7 +8,7 @@ fn main() -> Result<()> {
     let device = Device::new();
 
     let host_data: Vec<u32> = (0..32).collect();
-    let device_data = vec![0; 32];
+    let mut device_data = vec![0; 32];
     let mut host_buffer = device
         .create_buffer(
             host_data.clone(),
@@ -17,18 +16,18 @@ fn main() -> Result<()> {
             0,
         )
         .unwrap();
-    host_buffer.allocate_memory(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    host_buffer.allocate_memory(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    let mut mapped:Vec<u32> = vec![0;32];
-    host_buffer.map_memory(0, host_buffer.vksize(), 0, &mut mapped);
-    mapped.copy_from_slice(host_data.clone().as_slice());
+    let mapped = host_buffer.map_memory(0, host_buffer.vksize(), 0).unwrap();
+    
+    unsafe {
+        memcpy(host_data.as_ptr(), mapped.cast(), 32);
+    }
     host_buffer.unmap_memory();
     host_buffer.bind_buffer_memory(0);
 
-    println!("{:?}", mapped.as_ptr());
-    println!("{:?}", mapped);
 
-    host_buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0, &mut mapped);
+    host_buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0);
     let mapped_range = VkMappedMemoryRangeBuilder::new()
         .memory(*host_buffer.memory())
         .offset(0)
@@ -73,14 +72,17 @@ fn main() -> Result<()> {
     device.destroy_fence(fence, None);
     device.free_commands_buffers(1, &cmd_copy);
 
-    let mut array = vec![0;32];
-    let mut mm:Vec<u32> = vec![0;32];
-    device_buffer.map_memory(0, device_buffer.vksize(), 0, &mut mm);
-    array.copy_from_slice(mm.as_slice());
+    let mut new_data = vec![0;32];
+    println!("{:?}", new_data);
+
+    let new_mapped = device_buffer.map_memory(0, device_buffer.vksize(), 0)?;
+    unsafe {
+        memcpy(new_mapped.cast(), new_data.as_mut_ptr(), 32);
+    }
     device_buffer.unmap_memory();
 
-    println!("{:?}", mm);
-    println!("{:?}", array);
+    println!("{:?}", new_data);
+
     return Ok(());
 
     //

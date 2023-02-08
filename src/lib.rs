@@ -807,18 +807,12 @@ pub trait Memory {
         }
     }
 
-    fn map_memory<T>(&self, offset: u64, size: u64, flags: u32, datas: &mut Vec<T>) {
+    fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<*mut c_void> {
         unsafe {
             // let mut mapped: *mut c_void = null_mut();
             // let mut array: Vec<T> = Vec::<T>::with_capacity(self.data.len());
             // array.set_len(self.data.len());
-
-            let mut p_data = datas.as_mut_ptr() as *mut c_void;
-            let mut pp_data = &mut p_data as *mut *mut c_void;
-
-            println!("turn {:?}", datas.as_ptr());
-            println!("tued {:?}", p_data);
-            println!("mutt {:?}", pp_data);
+            let mut mapped = MaybeUninit::<*mut c_void>::uninit();
 
             vk_assert(vkMapMemory(
                 *self.device(),
@@ -826,13 +820,15 @@ pub trait Memory {
                 offset,
                 size,
                 flags,
-                pp_data,
+                mapped.as_mut_ptr(),
             ));
 
             // println!("{:?}", array_ptr_c_void);
             // println!("{:?}", array_ptr_c_void.clone());
             // println!("{:?}", array_ptr_ptr);
             // array.copy_from_slice(self.data.as_slice());
+
+            Ok(mapped.assume_init())
         }
     }
 
