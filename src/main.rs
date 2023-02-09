@@ -3,6 +3,8 @@ use std::ffi::CString;
 use std::ptr::{copy_nonoverlapping as memcpy, null};
 use vkcholesky::*;
 
+mod sparse;
+
 const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 
 fn main() -> Result<()> {
@@ -11,7 +13,7 @@ fn main() -> Result<()> {
     let host_data: Vec<u32> = (0..32).collect();
     let mut device_data = vec![0; 32];
     let mut host_buffer = device
-        .create_buffer(
+        .create_ssbo(
             host_data.clone(),
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             0,
@@ -39,7 +41,7 @@ fn main() -> Result<()> {
     host_buffer.unmap_memory();
 
     let mut device_buffer = device
-        .create_buffer(
+        .create_ssbo(
             device_data,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
                 | VK_BUFFER_USAGE_TRANSFER_SRC_BIT

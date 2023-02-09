@@ -25,8 +25,7 @@ uint fibonacci(uint n) {
 void main() 
 {
 	uint index = gl_GlobalInvocationID.x;
-	// if (index >= BUFFER_ELEMENTS) 
-	//	return;	
-	// values[index] = fibonacci(values[index]);
-	values[index] = 1984;
+	if (index >= 32) 
+		return;	
+	values[index] = 1;
 }
