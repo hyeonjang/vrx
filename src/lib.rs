@@ -395,7 +395,7 @@ impl<T> VkWrapper<T> for Device {
     }
 }
 
-impl<'a, T> VkWrapper<T> for Buffer<'a, T> {
+impl<'a, T> VkWrapper<T> for SSBO<'a, T> {
     type VkStruct = VkBuffer;
 
     fn as_raw(&self) -> Self::VkStruct {
@@ -570,31 +570,7 @@ impl Device {
     }
 
     //
-    // shared vkbuffer
-    pub fn create_buffer<T>(
-        &self,
-        data: Vec<T>,
-        usage: VkBufferUsageFlagBits,
-        flags: VkBufferCreateFlags,
-    ) -> Result<Buffer<T>> {
-        let info = VkBufferCreateInfo {
-            sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            pNext: null(),
-            flags: flags,
-            size: (size_of::<T>() * data.len()) as u64,
-            usage: usage as VkBufferUsageFlags,
-            sharingMode: VK_SHARING_MODE_EXCLUSIVE,
-            queueFamilyIndexCount: self.queue_family_index, // no working here
-            pQueueFamilyIndices: &self.queue_family_index,  // no working here
-        };
 
-        Ok(Buffer::<T>::new(
-            data,
-            flags,
-            usage as VkBufferUsageFlags,
-            &self.self_,
-        ))
-    }
 
     //
     // descriptor
@@ -768,6 +744,34 @@ impl Device {
 
         Ok(pipelines)
     }
+
+    //
+    // high level api
+    //
+    pub fn create_ssbo<T>(
+        &self,
+        data: Vec<T>,
+        usage: VkBufferUsageFlagBits,
+        flags: VkBufferCreateFlags,
+    ) -> Result<SSBO<T>> {
+        let info = VkBufferCreateInfo {
+            sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            pNext: null(),
+            flags: flags,
+            size: (size_of::<T>() * data.len()) as u64,
+            usage: usage as VkBufferUsageFlags,
+            sharingMode: VK_SHARING_MODE_EXCLUSIVE,
+            queueFamilyIndexCount: self.queue_family_index, // no working here
+            pQueueFamilyIndices: &self.queue_family_index,  // no working here
+        };
+
+        Ok(SSBO::<T>::new(
+            data,
+            flags,
+            usage as VkBufferUsageFlags,
+            &self.self_,
+        ))
+    }
 }
 
 pub trait Memory {
@@ -809,9 +813,6 @@ pub trait Memory {
 
     fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<*mut c_void> {
         unsafe {
-            // let mut mapped: *mut c_void = null_mut();
-            // let mut array: Vec<T> = Vec::<T>::with_capacity(self.data.len());
-            // array.set_len(self.data.len());
             let mut mapped = MaybeUninit::<*mut c_void>::uninit();
 
             vk_assert(vkMapMemory(
@@ -822,11 +823,6 @@ pub trait Memory {
                 flags,
                 mapped.as_mut_ptr(),
             ));
-
-            // println!("{:?}", array_ptr_c_void);
-            // println!("{:?}", array_ptr_c_void.clone());
-            // println!("{:?}", array_ptr_ptr);
-            // array.copy_from_slice(self.data.as_slice());
 
             Ok(mapped.assume_init())
         }
@@ -843,14 +839,18 @@ pub trait Memory {
     }
 }
 
-pub struct Buffer<'a, T> {
+pub trait Buffer<T: Memory> {
+
+}
+
+pub struct SSBO<'a, T> {
     device: &'a VkDevice,
     buffer: VkBuffer,
     memory: VkDeviceMemory,
     pub data: Vec<T>,
 }
 
-impl<'a, T> Memory for Buffer<'a, T> {
+impl<'a, T> Memory for SSBO<'a, T> {
     fn device(&self) -> &VkDevice {
         self.device
     }
@@ -878,7 +878,7 @@ impl<'a, T> Memory for Buffer<'a, T> {
     }
 }
 
-impl<'a, T> Buffer<'a, T> {
+impl<'a, T> SSBO<'a, T> {
     pub fn new(
         data: Vec<T>,
         flags: VkBufferCreateFlags,
