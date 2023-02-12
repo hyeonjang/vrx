@@ -2,13 +2,12 @@ use anyhow::*;
 use std::ffi::CString;
 use std::ptr::{copy_nonoverlapping as memcpy, null};
 use vkcholesky::*;
-
-mod sparse;
+use vkcholesky::vx::*;
 
 const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 
 fn main() -> Result<()> {
-    let device = Device::new();
+    let device = vx::Device::new();
 
     let host_data: Vec<u32> = (0..32).collect();
     let mut device_data = vec![0; 32];

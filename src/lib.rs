@@ -18,6 +18,8 @@ use paste::paste;
 use phf::phf_map;
 
 pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf_map! {
+    "VkDescriptorPoolCreateInfo" => VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+    "VkDescriptorSetLayoutCreateInfo" => VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
     "VkWriteDescriptorSet" => VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
     "VkCommandBufferBeginInfo" => VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     "VkSubmitInfo" => VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -74,6 +76,23 @@ macro_rules! impl_builder_for_vk_structure_t {
 }
 
 // InfoBuilder implementations
+impl_builder_for_vk_structure_t!(
+    VkDescriptorPoolCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkDescriptorPoolCreateFlags,
+    maxSets: u32,
+    poolSizeCount: u32,
+    pPoolSizes: *const VkDescriptorPoolSize,
+);
+
+impl_builder_for_vk_structure_t!(
+    VkDescriptorSetLayoutCreateInfo,
+    pNext: *const ::std::os::raw::c_void,
+    flags: VkDescriptorSetLayoutCreateFlags,
+    bindingCount: u32,
+    pBindings: *const VkDescriptorSetLayoutBinding,
+);
+
 impl_builder_for_vk_structure_t!(
     VkWriteDescriptorSet,
     pNext: *const ::std::os::raw::c_void,
@@ -234,9 +253,159 @@ pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 22) | (minor << 12) | patch
 }
 
+///
+/// vulkan command block roles
+///
+#[macro_export]
+macro_rules! vkCmdBlock {
+
+    //
+    // Parse the Vulkan Commands: the top (starting point) of parser
+    //
+    // * 'THIS' - indicator and identificator for starting cmd block
+    // * 'cmd' - command buffer instance
+    // * 'function' - command function for command buffer
+    (THIS $cmd:expr; $function:ident($($args:expr),*);  $($tail:tt)*) => {
+
+        let begin_info = VkCommandBufferBeginInfoBuilder::new()
+        .flags(0)
+        .build();
+
+        unsafe {
+            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
+
+            vkCmdBlock!(@inner $cmd, $function($($args),*););
+            vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
+
+            vk_assert(vkEndCommandBuffer($cmd));
+        }
+    };
+
+    // * 'cmd' - command buffer instance
+    // * 'let lv0 = rv0' - pre declarations
+    (THIS $cmd:expr; let $lv:ident = $rv:expr; $($tail:tt)* ) => {
+
+        let begin_info = VkCommandBufferBeginInfoBuilder::new()
+            .flags(0)
+            .build();
+
+        unsafe {
+            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
+
+            let $lv= $rv;
+            vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
+
+            vk_assert(vkEndCommandBuffer($cmd));
+        }
+    };
+
+    //
+    // tt recursive parser for the function call
+    //
+    (@tt_recursion $cmd:expr, $function:ident($($args:expr),*); $($tail:tt)*) => {
+        vkCmdBlock!(@inner $cmd, $function($($args),*););
+        vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
+    };
+
+    // declaration
+    (@tt_recursion $cmd:expr, let $lv0:ident = $rv0:expr; $($tail:tt)*) => {
+        let $lv0 = $rv0;
+        vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
+    };
+
+    // empty
+    (@tt_recursion $cmd:expr,) => {};
+
+    //
+    // Parse the Vulkan All Commands
+    //
+    // * '@inner' - identifier for inner macro
+    // * 'cmd' - command buffer instance
+    // * 'function' - command function for command buffer
+    (@inner $cmd:expr, $function:ident($($args:expr),*);) => {
+
+        macro_rules! inner {
+            (BIND_DESCRIPTOR_SETS(
+                $pipeline_bind_point:expr,
+                $layout:expr,
+                $first_set:expr,
+                $descriptor_set_count:expr,
+                $p_descriptor_sets:expr,
+                $dynamic_offset_count:expr,
+                $p_dynamic_offsets:expr
+            )) => {
+                vkCmdBindDescriptorSets(
+                    $cmd,
+                    $pipeline_bind_point,
+                    $layout,
+                    $first_set,
+                    $descriptor_set_count,
+                    $p_descriptor_sets,
+                    $dynamic_offset_count,
+                    $p_dynamic_offsets
+                );
+            };
+
+            (BIND_PIPELINE($pipeline_bind_point:expr, $pipeline:expr)) => {
+                vkCmdBindPipeline(
+                    $cmd,
+                    $pipeline_bind_point,
+                    $pipeline,
+                );
+            };
+
+            (COPY_BUFFER($source:expr, $target:expr, $num:expr, $buffer_copy:expr)) => {
+                vkCmdCopyBuffer($cmd, $source, $target, $num, $buffer_copy);
+            };
+
+            (DISPATCH(
+                $group_count_x:expr,
+                $group_count_y:expr,
+                $group_count_z:expr)) => {
+                    vkCmdDispatch(
+                        $cmd,
+                        $group_count_x, $group_count_y, $group_count_z
+                    );
+            };
+
+            (PIPELINE_BARRIER(
+                $src_stage_mask:expr,
+                $dst_stage_mask:expr,
+                $dependency_flags:expr,
+                $memory_barrier_count:expr,
+                $p_memory_barriers:expr,
+                $buffer_memory_barrier_count:expr,
+                $p_buffer_memory_barriers:expr,
+                $image_memory_barrier_count:expr,
+                $p_image_memory_barriers:expr)) => {
+
+                vkCmdPipelineBarrier(
+                    $cmd,
+                    $src_stage_mask.try_into().unwrap(),
+                    $dst_stage_mask.try_into().unwrap(),
+                    $dependency_flags,
+                    $memory_barrier_count,
+                    $p_memory_barriers,
+                    $buffer_memory_barrier_count,
+                    $p_buffer_memory_barriers,
+                    $image_memory_barrier_count,
+                    $p_image_memory_barriers
+                );
+            };
+
+
+        } // the end of macro_rules! "inner"
+        inner!($function($($args),*));
+    };
+}
+
 //
 // higher-level wrapper
 //
+pub mod vx {
+
+use crate::*;
+
 pub struct Context {
     pub instance: VkInstance,
     pub physical_devices: Vec<VkPhysicalDevice>,
@@ -376,6 +545,7 @@ fn vulkan_context() -> &'static Context {
 ///
 /// High-level wrapping trait for Custom VkStructure
 ///
+/// 
 pub trait VkWrapper<T> {
     type VkStruct;
 
@@ -1061,160 +1231,4 @@ impl<'a> Descriptor<'a> {
         }
     }
 }
-
-///
-/// vulkan command block roles
-///
-#[macro_export]
-macro_rules! vkCmdBlock {
-
-    //
-    // Parse the Vulkan Commands: the top (starting point) of parser
-    //
-    // * 'THIS' - indicator and identificator for starting cmd block
-    // * 'cmd' - command buffer instance
-    // * 'function' - command function for command buffer
-    (THIS $cmd:expr; $function:ident($($args:expr),*);  $($tail:tt)*) => {
-
-        let begin_info = VkCommandBufferBeginInfoBuilder::new()
-        .flags(0)
-        .build();
-
-        unsafe {
-            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
-
-            vkCmdBlock!(@inner $cmd, $function($($args),*););
-            vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
-
-            vk_assert(vkEndCommandBuffer($cmd));
-        }
-    };
-
-    // * 'cmd' - command buffer instance
-    // * 'let lv0 = rv0' - pre declarations
-    (THIS $cmd:expr; let $lv:ident = $rv:expr; $($tail:tt)* ) => {
-
-        let begin_info = VkCommandBufferBeginInfoBuilder::new()
-            .flags(0)
-            .build();
-
-        unsafe {
-            vk_assert(vkBeginCommandBuffer($cmd, &begin_info));
-
-            let $lv= $rv;
-            vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
-
-            vk_assert(vkEndCommandBuffer($cmd));
-        }
-    };
-
-    //
-    // tt recursive parser for the function call
-    //
-    (@tt_recursion $cmd:expr, $function:ident($($args:expr),*); $($tail:tt)*) => {
-        vkCmdBlock!(@inner $cmd, $function($($args),*););
-        vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
-    };
-
-    // declaration
-    (@tt_recursion $cmd:expr, let $lv0:ident = $rv0:expr; $($tail:tt)*) => {
-        let $lv0 = $rv0;
-        vkCmdBlock!(@tt_recursion $cmd, $($tail)*);
-    };
-
-    // empty
-    (@tt_recursion $cmd:expr,) => {};
-
-    //
-    // Parse the Vulkan All Commands
-    //
-    // * '@inner' - identifier for inner macro
-    // * 'cmd' - command buffer instance
-    // * 'function' - command function for command buffer
-    (@inner $cmd:expr, $function:ident($($args:expr),*);) => {
-
-        macro_rules! inner {
-            (BIND_DESCRIPTOR_SETS(
-                $pipeline_bind_point:expr,
-                $layout:expr,
-                $first_set:expr,
-                $descriptor_set_count:expr,
-                $p_descriptor_sets:expr,
-                $dynamic_offset_count:expr,
-                $p_dynamic_offsets:expr
-            )) => {
-                vkCmdBindDescriptorSets(
-                    $cmd,
-                    $pipeline_bind_point,
-                    $layout,
-                    $first_set,
-                    $descriptor_set_count,
-                    $p_descriptor_sets,
-                    $dynamic_offset_count,
-                    $p_dynamic_offsets
-                );
-            };
-
-            (BIND_PIPELINE($pipeline_bind_point:expr, $pipeline:expr)) => {
-                vkCmdBindPipeline(
-                    $cmd,
-                    $pipeline_bind_point,
-                    $pipeline,
-                );
-            };
-
-            (COPY_BUFFER($source:expr, $target:expr, $num:expr, $buffer_copy:expr)) => {
-                vkCmdCopyBuffer($cmd, $source, $target, $num, $buffer_copy);
-            };
-
-            (DISPATCH(
-                $group_count_x:expr,
-                $group_count_y:expr,
-                $group_count_z:expr)) => {
-                    vkCmdDispatch(
-                        $cmd,
-                        $group_count_x, $group_count_y, $group_count_z
-                    );
-            };
-
-            (PIPELINE_BARRIER(
-                $src_stage_mask:expr,
-                $dst_stage_mask:expr,
-                $dependency_flags:expr,
-                $memory_barrier_count:expr,
-                $p_memory_barriers:expr,
-                $buffer_memory_barrier_count:expr,
-                $p_buffer_memory_barriers:expr,
-                $image_memory_barrier_count:expr,
-                $p_image_memory_barriers:expr)) => {
-
-                vkCmdPipelineBarrier(
-                    $cmd,
-                    $src_stage_mask.try_into().unwrap(),
-                    $dst_stage_mask.try_into().unwrap(),
-                    $dependency_flags,
-                    $memory_barrier_count,
-                    $p_memory_barriers,
-                    $buffer_memory_barrier_count,
-                    $p_buffer_memory_barriers,
-                    $image_memory_barrier_count,
-                    $p_image_memory_barriers
-                );
-            };
-
-
-        } // the end of macro_rules! "inner"
-        inner!($function($($args),*));
-    };
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    #[test]
-    fn t_context() {
-        let ctx = Context::new();
-    }
 }
