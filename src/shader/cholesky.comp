@@ -1,16 +1,20 @@
 #version 450
 
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
-
-layout ( push_constant ) uniform InMatrix {
-	float values[];
-} in_matrix;
-
-layout(binding = 0) buffer OutMatrix {
-    float values[ ];
-} out_matrix;
-
 layout (constant_id = 0) const uint BUFFER_ELEMENTS = 32;
+
+struct Matrix {
+	float values[3*3];
+};
+
+layout ( push_constant ) uniform InT {
+	Matrix matrix[2];
+} mtx_in;
+
+layout(binding = 0) buffer OutT {
+    Matrix matrix[2];
+} mtx_out;
+
 
 uint fibonacci(uint n) {
 	if(n <= 1){
@@ -26,11 +30,22 @@ uint fibonacci(uint n) {
 	return curr;
 }
 
+uint mindex(uint irow, uint icol) {
+	return irow*3 + icol;
+}
+
 void main() 
 {
 	uint index = gl_GlobalInvocationID.x;
 	if (index >= 32) 
 		return;	
 	// values[index] = values[index] * 2.0;
-	out_matrix.values = in_matrix.values;
+
+	for(int k=0; k<2; k++) {
+		for(int i=0; i<3; i++) {
+			for(uint j=0; j<3; j++) {
+				mtx_out.matrix[k].values[mindex(i, j)] = mtx_in.matrix[k].values[mindex(i, j)];
+			}
+		}
+	}
 }
