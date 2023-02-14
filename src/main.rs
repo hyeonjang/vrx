@@ -1,18 +1,26 @@
 use anyhow::*;
 use std::ffi::CString;
 use std::ptr::{copy_nonoverlapping as memcpy, null};
-use vkcholesky::*;
 use vkcholesky::vx::*;
+use vkcholesky::*;
 
 const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
+
+mod matries;
 
 fn main() -> Result<()> {
     let device = vx::Device::new();
 
-    let host_data: Vec<u32> = (0..32).collect();
-    let mut device_data = vec![0; 32];
+    let host_mtx: matries::Matrix<f32, 3, 3> =
+        matries::Matrix::new([[1.0, 2.0, 3.0], [2.0, 3.0, 4.0], [4.0, 5.0, 6.0]]);
+    let mtx: matries::Matrix<f32, 3, 3> =
+        matries::Matrix::new([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]);
+
+    // let host_data: Vec<u32> = (0..32).collect();
+    let host_data = vec![host_mtx.clone(), host_mtx.clone()];
+    let mut device_data = vec![mtx.clone(), mtx.clone()];
     let mut host_buffer = device
-        .create_ssbo(
+        .create_vxbuffer(
             host_data.clone(),
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             0,
@@ -23,9 +31,8 @@ fn main() -> Result<()> {
     );
 
     let mapped = host_buffer.map_memory(0, host_buffer.vksize(), 0).unwrap();
-
     unsafe {
-        memcpy(host_data.as_ptr(), mapped.cast(), 32);
+        memcpy(host_data.as_ptr(), mapped.cast(), host_data.len());
     }
     host_buffer.unmap_memory();
     host_buffer.bind_buffer_memory(0);
@@ -40,8 +47,8 @@ fn main() -> Result<()> {
     host_buffer.unmap_memory();
 
     let mut device_buffer = device
-        .create_ssbo(
-            device_data,
+        .create_vxbuffer(
+            device_data.clone(),
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
                 | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
                 | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -75,12 +82,16 @@ fn main() -> Result<()> {
     device.destroy_fence(fence, None);
     device.free_commands_buffers(1, &cmd_copy);
 
-    let mut new_data = vec![0; 32];
+    let mut new_data = device_data.clone();
     println!("{:?}", new_data);
+    println!("{:?}", device_buffer.vksize());
 
+    println!("{:?}", new_data.len());
     let new_mapped = device_buffer.map_memory(0, device_buffer.vksize(), 0)?;
+    println!("{:?}", new_mapped);
     unsafe {
-        memcpy(new_mapped.cast(), new_data.as_mut_ptr(), 32);
+        // warning
+        memcpy(new_mapped.cast(), new_data.as_mut_ptr(), new_data.len());
     }
     device_buffer.unmap_memory();
 
@@ -114,11 +125,18 @@ fn main() -> Result<()> {
         .create_pipeline_cache(&pipeline_cache_create_info)
         .unwrap();
 
+    let push_constant_range = VkPushConstantRange {
+        stageFlags: VK_SHADER_STAGE_COMPUTE_BIT as u32,
+        offset: 0,
+        size: host_buffer.vksize() as u32,
+    };
+
     let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
         .flags(0)
         .setLayoutCount(descriptor.set_layouts.len() as u32)
         .pSetLayouts(descriptor.set_layouts.as_ptr())
-        .pushConstantRangeCount(0)
+        .pushConstantRangeCount(1)
+        .pPushConstantRanges(&push_constant_range)
         .build();
     let pipeline_layout = device
         .create_pipeline_layout(&pipeline_layout_create_info)
@@ -171,6 +189,14 @@ fn main() -> Result<()> {
         BIND_PIPELINE(
             VK_PIPELINE_BIND_POINT_COMPUTE,
             pipeline
+        );
+
+        PUSH_CONSTANT(
+            pipeline_layout,
+            VK_SHADER_STAGE_COMPUTE_BIT as u32,
+            0,
+            host_buffer.vksize() as u32,
+            host_buffer.data.as_ptr() as *const std::os::raw::c_void
         );
 
         BIND_DESCRIPTOR_SETS(
@@ -242,10 +268,10 @@ fn main() -> Result<()> {
         .build();
     host_buffer.invalidate_mapped_memory_ranges(1, &mapped_ranges);
 
-    let mut finalle = vec![2021; 32];
+    let mut finalle = vec![mtx.clone(); 2];
     println!("finalle {:?}", finalle);
     unsafe {
-        memcpy(new_mapped.cast(), finalle.as_mut_ptr(), 32);
+        memcpy(new_mapped.cast(), finalle.as_mut_ptr(), 2);
     }
     println!("finalle {:?}", finalle);
     host_buffer.unmap_memory();
