@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::ops::Index;
 
+#[derive(Debug, Clone, Copy)]
 pub struct Matrix<T, const R: usize, const C: usize> {
     values: [[T; C]; R],
 }
@@ -11,7 +12,7 @@ impl<T, const R: usize, const C: usize> Matrix<T, R, C> {
     }
 }
 
-pub struct  DynamicMatrix<T> {
+pub struct DynamicMatrix<T> {
     values: Vec<T>,
 }
 
@@ -21,12 +22,9 @@ impl<T, const R: usize, const C: usize> Index<(usize, usize)> for Matrix<T, R, C
     fn index(&self, index: (usize, usize)) -> &Self::Output {
         &self.values[index.0][index.1]
     }
-
 }
 
-pub trait MatrixSolver {
-
-}
+pub trait MatrixSolver {}
 
 pub enum SparesMatrixType {
     CSC = 0,
@@ -46,7 +44,7 @@ pub trait SparseSolver {
     fn factorize();
 }
 
-#[cfg(test)] 
+#[cfg(test)]
 mod tests {
     #[test]
     fn works() {

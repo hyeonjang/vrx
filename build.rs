@@ -11,6 +11,8 @@ fn compile_shader() {
         "./src/shader/cholesky.spv",
     ];
     Command::new("glslc").args(&args).output().expect("failed");
+
+    //@@ here cannot catch bug
 }
 
 fn main() {
@@ -39,7 +41,6 @@ fn main() {
         .derive_default(true)
         .size_t_is_usize(true)
         .rustified_enum("VkResult")
-        // .parse_callbacks(Box::new(callback))
         .generate()
         .expect("Unable to generate bindings");
     let out_path = PathBuf::from("./src");
@@ -49,4 +50,5 @@ fn main() {
 
     // spv generation
     compile_shader();
+    println!("cargo:rerun-if-changed=src/shader/cholesky.comp");
 }
