@@ -1271,6 +1271,40 @@ pub mod vx {
     //     }
     // }
 
+    pub struct PushConstant<T> {
+        stage: VkShaderStageFlags,
+        data : Vec<T>
+    }
+
+    impl<T> PushConstant<T> {
+        pub fn new(stage: VkShaderStageFlagBits, data: Vec<T>) -> Self {
+            Self {
+                stage: stage as u32,
+                data: data,
+            }
+        }
+
+        pub fn vksize(&self) -> u32 {
+            (self.data.len() * size_of::<T>()) as u32
+        }
+
+        pub fn as_ptr(&self) -> *const std::os::raw::c_void {
+            self.data.as_ptr() as *const std::os::raw::c_void
+        }
+
+        pub fn stage(&self) -> VkShaderStageFlags {
+            self.stage
+        }
+
+        pub fn range(&self) -> VkPushConstantRange {
+            VkPushConstantRange { stageFlags: self.stage, offset: 0, size: self.vksize() }
+        }
+
+        pub fn range_custom(&self, offset: u32, size: u32) -> VkPushConstantRange {
+            VkPushConstantRange { stageFlags: self.stage, offset: offset, size: size }
+        }
+    }
+
     pub struct Descriptor<'a> {
         device: &'a VkDevice,
         pool: VkDescriptorPool,

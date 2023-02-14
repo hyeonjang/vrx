@@ -125,23 +125,19 @@ fn main() -> Result<()> {
         .create_pipeline_cache(&pipeline_cache_create_info)
         .unwrap();
 
-    let push_constant_range = VkPushConstantRange {
-        stageFlags: VK_SHADER_STAGE_COMPUTE_BIT as u32,
-        offset: 0,
-        size: host_buffer.vksize() as u32,
-    };
-
+    let push_constant0  = PushConstant::new(VK_SHADER_STAGE_COMPUTE_BIT, host_data);
     let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
         .flags(0)
         .setLayoutCount(descriptor.set_layouts.len() as u32)
         .pSetLayouts(descriptor.set_layouts.as_ptr())
         .pushConstantRangeCount(1)
-        .pPushConstantRanges(&push_constant_range)
+        .pPushConstantRanges(&push_constant0.range())
         .build();
     let pipeline_layout = device
         .create_pipeline_layout(&pipeline_layout_create_info)
         .unwrap();
 
+        
     let name = CString::new("main").unwrap();
     let ref_name = &name;
 
@@ -193,10 +189,10 @@ fn main() -> Result<()> {
 
         PUSH_CONSTANT(
             pipeline_layout,
-            VK_SHADER_STAGE_COMPUTE_BIT as u32,
+            push_constant0.stage(),
             0,
-            host_buffer.vksize() as u32,
-            host_buffer.data.as_ptr() as *const std::os::raw::c_void
+            push_constant0.vksize(),
+            push_constant0.as_ptr()
         );
 
         BIND_DESCRIPTOR_SETS(
