@@ -20,6 +20,7 @@ use phf::phf_map;
 
 pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf_map! {
     "VkBufferCreateInfo" => VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    "VkImageCreateInfo" => VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
     "VkDescriptorPoolCreateInfo" => VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
     "VkDescriptorSetLayoutCreateInfo" => VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
     "VkWriteDescriptorSet" => VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -35,7 +36,7 @@ pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf
 };
 
 macro_rules! impl_builder_for_vk_structure_t {
-    ( $type_:ty, $($field:ident: $field_type:ty $(,)?)* ) => {
+    ( pub struct $type_:ty { $(pub $field:ident: $field_type:ty $(,)?)* } ) => {
 
         paste! {
             // builder contain info structure
@@ -79,126 +80,172 @@ macro_rules! impl_builder_for_vk_structure_t {
 
 // InfoBuilder implementations
 impl_builder_for_vk_structure_t!(
-    VkBufferCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkBufferCreateFlags,
-    size: VkDeviceSize,
-    usage: VkBufferUsageFlags,
-    sharingMode: VkSharingMode,
-    queueFamilyIndexCount: u32,
-    pQueueFamilyIndices: *const u32,
+    pub struct VkImageCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkImageCreateFlags,
+        pub imageType: VkImageType,
+        pub format: VkFormat,
+        pub extent: VkExtent3D,
+        pub mipLevels: u32,
+        pub arrayLayers: u32,
+        pub samples: VkSampleCountFlagBits,
+        pub tiling: VkImageTiling,
+        pub usage: VkImageUsageFlags,
+        pub sharingMode: VkSharingMode,
+        pub queueFamilyIndexCount: u32,
+        pub pQueueFamilyIndices: *const u32,
+        pub initialLayout: VkImageLayout,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkDescriptorPoolCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkDescriptorPoolCreateFlags,
-    maxSets: u32,
-    poolSizeCount: u32,
-    pPoolSizes: *const VkDescriptorPoolSize,
+    pub struct VkBufferCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkBufferCreateFlags,
+        pub size: VkDeviceSize,
+        pub usage: VkBufferUsageFlags,
+        pub sharingMode: VkSharingMode,
+        pub queueFamilyIndexCount: u32,
+        pub pQueueFamilyIndices: *const u32,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkDescriptorSetLayoutCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkDescriptorSetLayoutCreateFlags,
-    bindingCount: u32,
-    pBindings: *const VkDescriptorSetLayoutBinding,
+    pub struct VkDescriptorPoolCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkDescriptorPoolCreateFlags,
+        pub maxSets: u32,
+        pub poolSizeCount: u32,
+        pub pPoolSizes: *const VkDescriptorPoolSize,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkWriteDescriptorSet,
-    pNext: *const ::std::os::raw::c_void,
-    dstSet: VkDescriptorSet,
-    dstBinding: u32,
-    dstArrayElement: u32,
-    descriptorCount: u32,
-    descriptorType: VkDescriptorType,
-    pImageInfo: *const VkDescriptorImageInfo,
-    pBufferInfo: *const VkDescriptorBufferInfo,
-    pTexelBufferView: *const VkBufferView,
+    pub struct VkDescriptorSetLayoutCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkDescriptorSetLayoutCreateFlags,
+        pub bindingCount: u32,
+        pub pBindings: *const VkDescriptorSetLayoutBinding,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkCommandBufferBeginInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkCommandBufferUsageFlags,
-    pInheritanceInfo: *const VkCommandBufferInheritanceInfo,
+    pub struct VkWriteDescriptorSet {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub dstSet: VkDescriptorSet,
+        pub dstBinding: u32,
+        pub dstArrayElement: u32,
+        pub descriptorCount: u32,
+        pub descriptorType: VkDescriptorType,
+        pub pImageInfo: *const VkDescriptorImageInfo,
+        pub pBufferInfo: *const VkDescriptorBufferInfo,
+        pub pTexelBufferView: *const VkBufferView,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkSubmitInfo,
-    waitSemaphoreCount: u32,
-    pWaitSemaphores: *const VkSemaphore,
-    pWaitDstStageMask: *const VkPipelineStageFlags,
-    commandBufferCount: u32,
-    pCommandBuffers: *const VkCommandBuffer,
-    signalSemaphoreCount: u32,
-    pSignalSemaphores: *const VkSemaphore,
+    pub struct VkCommandBufferBeginInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkCommandBufferUsageFlags,
+        pub pInheritanceInfo: *const VkCommandBufferInheritanceInfo,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkFenceCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkFenceCreateFlags,
+    pub struct VkSubmitInfo {
+        pub sType: VkStructureType,
+        pub waitSemaphoreCount: u32,
+        pub pWaitSemaphores: *const VkSemaphore,
+        pub pWaitDstStageMask: *const VkPipelineStageFlags,
+        pub commandBufferCount: u32,
+        pub pCommandBuffers: *const VkCommandBuffer,
+        pub signalSemaphoreCount: u32,
+        pub pSignalSemaphores: *const VkSemaphore,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkPipelineCacheCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkPipelineCacheCreateFlags,
-    initialDataSize: usize,
-    pInitialData: *const ::std::os::raw::c_void,
+    pub struct VkFenceCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkFenceCreateFlags,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkPipelineShaderStageCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkPipelineShaderStageCreateFlags,
-    stage: VkShaderStageFlagBits,
-    module: VkShaderModule,
-    pName: *const ::std::os::raw::c_char,
-    pSpecializationInfo: *const VkSpecializationInfo,
+    pub struct VkPipelineCacheCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkPipelineCacheCreateFlags,
+        pub initialDataSize: usize,
+        pub pInitialData: *const ::std::os::raw::c_void,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkPipelineLayoutCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkPipelineLayoutCreateFlags,
-    setLayoutCount: u32,
-    pSetLayouts: *const VkDescriptorSetLayout,
-    pushConstantRangeCount: u32,
-    pPushConstantRanges: *const VkPushConstantRange,
+    pub struct VkPipelineShaderStageCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkPipelineShaderStageCreateFlags,
+        pub stage: VkShaderStageFlagBits,
+        pub module: VkShaderModule,
+        pub pName: *const ::std::os::raw::c_char,
+        pub pSpecializationInfo: *const VkSpecializationInfo,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkComputePipelineCreateInfo,
-    pNext: *const ::std::os::raw::c_void,
-    flags: VkPipelineCreateFlags,
-    stage: VkPipelineShaderStageCreateInfo,
-    layout: VkPipelineLayout,
-    basePipelineHandle: VkPipeline,
-    basePipelineIndex: i32,
+    pub struct VkPipelineLayoutCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkPipelineLayoutCreateFlags,
+        pub setLayoutCount: u32,
+        pub pSetLayouts: *const VkDescriptorSetLayout,
+        pub pushConstantRangeCount: u32,
+        pub pPushConstantRanges: *const VkPushConstantRange,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkMappedMemoryRange,
-    pNext: *const ::std::os::raw::c_void,
-    memory: VkDeviceMemory,
-    offset: VkDeviceSize,
-    size: VkDeviceSize,
+    pub struct VkComputePipelineCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkPipelineCreateFlags,
+        pub stage: VkPipelineShaderStageCreateInfo,
+        pub layout: VkPipelineLayout,
+        pub basePipelineHandle: VkPipeline,
+        pub basePipelineIndex: i32,
+    }
 );
 
 impl_builder_for_vk_structure_t!(
-    VkBufferMemoryBarrier,
-    pNext: *const ::std::os::raw::c_void,
-    srcAccessMask: VkAccessFlags,
-    dstAccessMask: VkAccessFlags,
-    srcQueueFamilyIndex: u32,
-    dstQueueFamilyIndex: u32,
-    buffer: VkBuffer,
-    offset: VkDeviceSize,
-    size: VkDeviceSize,
+    pub struct VkMappedMemoryRange {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub memory: VkDeviceMemory,
+        pub offset: VkDeviceSize,
+        pub size: VkDeviceSize,
+    }
+);
+
+impl_builder_for_vk_structure_t!(
+    pub struct VkBufferMemoryBarrier {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub srcAccessMask: VkAccessFlags,
+        pub dstAccessMask: VkAccessFlags,
+        pub srcQueueFamilyIndex: u32,
+        pub dstQueueFamilyIndex: u32,
+        pub buffer: VkBuffer,
+        pub offset: VkDeviceSize,
+        pub size: VkDeviceSize,
+    }
 );
 
 macro_rules! impl_default_for_vk_pointer_t {
