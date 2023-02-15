@@ -1147,6 +1147,8 @@ pub mod vx {
                 vkInvalidateMappedMemoryRanges(*self.device(), memory_range_count, p_memory_ranges);
             }
         }
+        fn bind_buffer_memory(&self, offset: VkDeviceSize) {}
+        fn bind_image_memory(&self, offset: VkDeviceSize) {}
     }
 
     #[derive(Debug)]
@@ -1192,6 +1194,16 @@ pub mod vx {
                 vkGetBufferMemoryRequirements(*self.device(), self.buffer, &mut mem_req);
 
                 mem_req
+            }
+        }
+        fn bind_buffer_memory(&self, offset: VkDeviceSize) {
+            unsafe {
+                vk_assert(vkBindBufferMemory(
+                    *self.device,
+                    self.buffer,
+                    self.memory,
+                    offset,
+                ));
             }
         }
     }
@@ -1255,8 +1267,10 @@ pub mod vx {
             self.unmap_memory();
         }
 
-        pub fn map_to_cpu_and_unmap(&mut self) -> Vec<T> where T: std::clone::Clone + Default {
-
+        pub fn map_to_cpu_and_unmap(&mut self) -> Vec<T>
+        where
+            T: std::clone::Clone + Default,
+        {
             let mut output = vec![T::default(); self.len as usize];
 
             let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
@@ -1281,29 +1295,22 @@ pub mod vx {
                 }
             }
         }
-
-        pub fn bind_buffer_memory(&self, offset: VkDeviceSize) {
-            unsafe {
-                vk_assert(vkBindBufferMemory(
-                    *self.device,
-                    self.buffer,
-                    self.memory,
-                    offset,
-                ));
-            }
-        }
     }
 
-    pub struct VxImage<'a, T> {
+    pub struct VxImage<'a, 'b, T> {
         device: &'a VkDevice,
 
         image: VkImage,
         memory: VkDeviceMemory,
 
-        pub data: Vec<T>,
+        data: &'b mut T,
+        len: u32,
     }
 
-    impl<'a, T> Memory for VxImage<'a, T> {
+    impl<'a, 'b, T> Memory for VxImage<'a, 'b, T>
+    where
+        'a: 'b,
+    {
         fn device(&self) -> &VkDevice {
             self.device
         }
@@ -1337,39 +1344,53 @@ pub mod vx {
                 mem_req
             }
         }
+
+        fn bind_buffer_memory(&self, offset: VkDeviceSize) {
+            unimplemented!();
+        }
+        fn bind_image_memory(&self, offset: VkDeviceSize) {
+            unsafe {
+                vk_assert(vkBindImageMemory(
+                    *self.device,
+                    self.image,
+                    self.memory,
+                    offset,
+                ));
+            }
+        }
     }
 
-    // impl<'a, T> VxImage<'a, T> {
-    //     pub fn new(
-    //         device: &'a VkDevice,
-    //         flags: VkBufferCreateFlags,
-    //         usage: VkBufferUsageFlags,
-    //         data: Vec<T>,
-    //     ) -> Self {
-    //         let mut buf = vk_instantiate!(VkImage);
-    //         unsafe {
-    //             let info = VkBufferCreateInfo {
-    //                 sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    //                 pNext: null(),
-    //                 flags: flags,
-    //                 size: (size_of::<T>() * data.len()) as u64,
-    //                 usage: usage,
-    //                 sharingMode: VK_SHARING_MODE_EXCLUSIVE,
-    //                 queueFamilyIndexCount: 0,    // no working here
-    //                 pQueueFamilyIndices: null(), // no working here
-    //             };
-    //             vk_assert(vkCreateBuffer(*device, &info, null(), &mut buf));
-    //         }
+    impl<'a, 'b, T> VxImage<'a, 'b, T>
+    where
+        'a: 'b,
+    {
+        pub fn new(
+            len: u32,
+            data: &'b mut T,
+            pinfo: *const VkImageCreateInfo,
+            mem_prop_flags: VkMemoryPropertyFlagBits,
+            device: &'a VkDevice,
+        ) -> Self {
+            let mut image = vk_instantiate!(VkImage);
+            unsafe {
+                vk_assert(vkCreateImage(*device, pinfo, null(), &mut image));
+            }
 
-    //         let mem = vk_instantiate!(VkDeviceMemory);
-    //         Self {
-    //             buffer: buf,
-    //             memory: mem,
-    //             data: data,
-    //             device: device,
-    //         }
-    //     }
-    // }
+            let memory = vk_instantiate!(VkDeviceMemory);
+            let mut vximage = Self {
+                device,
+                image,
+                memory,
+                data,
+                len,
+            };
+
+            vximage.allocate_memory(mem_prop_flags);
+            vximage.bind_image_memory(0);
+
+            vximage
+        }
+    }
 
     pub struct PushConstant<T> {
         stage: VkShaderStageFlags,
@@ -1415,6 +1436,7 @@ pub mod vx {
         }
     }
 
+    // @@todo redesign
     pub struct Descriptor<'a> {
         device: &'a VkDevice,
         pool: VkDescriptorPool,
