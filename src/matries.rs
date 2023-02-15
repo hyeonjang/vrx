@@ -1,6 +1,6 @@
 use std::ffi::CString;
 use std::ops::Index;
-use std::ptr::{null};
+use std::ptr::null;
 
 use vkcholesky::vx::*;
 use vkcholesky::*;
@@ -148,7 +148,7 @@ where
             .setLayoutCount(descriptor.set_layouts.len() as u32)
             .pSetLayouts(descriptor.set_layouts.as_ptr())
             .build();
-            
+
         let pipeline_layout = device
             .create_pipeline_layout(&pipeline_layout_create_info)
             .unwrap();
@@ -235,7 +235,6 @@ where
         device.queue_submit(0, &submit_info, 1, fence1);
         device.wait_for_fence(1, &fence1, false, u64::MAX);
 
-
         // let new_mapped = out_buffer
         //     .map_memory(0, VK_WHOLE_SIZE as u64, 0)
         //     .unwrap();
@@ -256,7 +255,6 @@ where
 
         let mapped = out_buffer.map_to_cpu_and_unmap();
         println!("{:?}", mapped);
-
     }
 }
 
