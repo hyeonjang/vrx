@@ -9,6 +9,7 @@ use std::any::{type_name, Any};
 use std::ffi::*;
 use std::mem::*;
 use std::ptr::*;
+use std::ptr::{copy_nonoverlapping as memcpy, null};
 use std::str::*;
 use std::sync::{Mutex, Once};
 
@@ -531,6 +532,19 @@ pub mod vx {
             }
         }
 
+        pub fn get_phyiscal_device_properties(&self) -> VkPhysicalDeviceProperties {
+            let mut physical_device_properties = VkPhysicalDeviceProperties::default();
+
+            unsafe {
+                vkGetPhysicalDeviceProperties(
+                    self.physical_devices[0],
+                    &mut physical_device_properties,
+                );
+            }
+
+            physical_device_properties
+        }
+
         pub fn get_physical_device_memory_properties(&self) -> VkPhysicalDeviceMemoryProperties {
             let mut mem_prop = VkPhysicalDeviceMemoryProperties {
                 memoryTypeCount: 0,
@@ -555,7 +569,7 @@ pub mod vx {
         }
     }
 
-    fn vulkan_context() -> &'static Context {
+    pub fn vulkan_context() -> &'static Context {
         static mut CTX: MaybeUninit<Context> = MaybeUninit::uninit();
         static ONCE: Once = Once::new();
 
@@ -589,17 +603,17 @@ pub mod vx {
         }
     }
 
-    impl<'a, T> VkWrapper<T> for VxBuffer<'a, T> {
-        type VkStruct = VkBuffer;
+    // impl<'a,  T> VkWrapper<T> for VxBuffer<'a, T> {
+    //     type VkStruct = VkBuffer;
 
-        fn as_raw(&self) -> Self::VkStruct {
-            self.buffer
-        }
+    //     fn as_raw(&self) -> Self::VkStruct {
+    //         self.buffer
+    //     }
 
-        fn as_raw_ptr(&self) -> &Self::VkStruct {
-            &self.buffer
-        }
-    }
+    //     fn as_raw_ptr(&self) -> &Self::VkStruct {
+    //         &self.buffer
+    //     }
+    // }
 
     pub struct Device {
         pub self_: VkDevice,
@@ -963,33 +977,29 @@ pub mod vx {
         //
         // high level api
         //
-        pub fn create_vxbuffer<T>(
-            &self,
-            data: Vec<T>,
+        pub fn create_vxbuffer<'a, 'b, T>(
+            &'b self,
+            data: &'a mut T,
+            len: u32,
             usage: VkBufferUsageFlagBits,
             flags: VkBufferCreateFlags,
-        ) -> Result<VxBuffer<T>> {
-            let info = VkBufferCreateInfo {
-                sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                pNext: null(),
-                flags: flags,
-                size: (size_of::<T>() * data.len()) as u64,
-                usage: usage as VkBufferUsageFlags,
-                sharingMode: VK_SHARING_MODE_EXCLUSIVE,
-                queueFamilyIndexCount: self.queue_family_index, // no working here
-                pQueueFamilyIndices: &self.queue_family_index,  // no working here
-            };
-
+            mem_prop_flags: VkMemoryPropertyFlagBits,
+        ) -> Result<VxBuffer<T>>
+        where
+            'a: 'b,
+        {
             Ok(VxBuffer::<T>::new(
                 data,
+                len,
                 flags,
                 usage as VkBufferUsageFlags,
+                mem_prop_flags,
                 &self.self_,
             ))
         }
     }
 
-    pub trait Memory {
+    trait Memory {
         // trait getter
         fn device(&self) -> &VkDevice;
         fn buffer(&self) -> Option<&VkBuffer> {
@@ -1092,16 +1102,18 @@ pub mod vx {
         }
     }
 
-    pub struct VxBuffer<'a, T> {
+    #[derive(Debug)]
+    pub struct VxBuffer<'a, 'b, T> {
         device: &'a VkDevice,
 
         buffer: VkBuffer,
         memory: VkDeviceMemory,
 
-        pub data: Vec<T>,
+        data: &'b mut T,
+        len: u32,
     }
 
-    impl<'a, T> Memory for VxBuffer<'a, T> {
+    impl<'a, 'b, T> Memory for VxBuffer<'a, 'b, T> {
         fn device(&self) -> &VkDevice {
             self.device
         }
@@ -1137,39 +1149,80 @@ pub mod vx {
         }
     }
 
-    impl<'a, T> VxBuffer<'a, T> {
+    impl<'a, 'b, T> VxBuffer<'a, 'b, T> {
         pub fn new(
-            data: Vec<T>,
+            data: &'b mut T,
+            len: u32,
             flags: VkBufferCreateFlags,
             usage: VkBufferUsageFlags,
+            mem_prop_flags: VkMemoryPropertyFlagBits,
             device: &'a VkDevice,
         ) -> Self {
             let mut buf = vk_instantiate!(VkBuffer);
+            let mem = vk_instantiate!(VkDeviceMemory);
+
+            let info = VkBufferCreateInfo {
+                sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                pNext: null(),
+                flags: flags,
+                size: (len * size_of::<T>() as u32) as u64,
+                usage: usage,
+                sharingMode: VK_SHARING_MODE_EXCLUSIVE,
+                queueFamilyIndexCount: 0,    // no working here
+                pQueueFamilyIndices: null(), // no working here
+            };
+
             unsafe {
-                let info = VkBufferCreateInfo {
-                    sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                    pNext: null(),
-                    flags: flags,
-                    size: (size_of::<T>() * data.len()) as u64,
-                    usage: usage,
-                    sharingMode: VK_SHARING_MODE_EXCLUSIVE,
-                    queueFamilyIndexCount: 0,    // no working here
-                    pQueueFamilyIndices: null(), // no working here
-                };
                 vk_assert(vkCreateBuffer(*device, &info, null(), &mut buf));
             }
 
-            let mem = vk_instantiate!(VkDeviceMemory);
-            Self {
+            let mut buffer = Self {
                 buffer: buf,
                 memory: mem,
                 data: data,
+                len: len,
                 device: device,
+            };
+
+            buffer.allocate_memory(mem_prop_flags);
+            buffer.bind_buffer_memory(0);
+
+            let mapped = buffer.map_memory(0, buffer.vksize(), 0).unwrap();
+            unsafe {
+                memcpy(buffer.data, mapped.cast(), buffer.len as usize);
             }
+            buffer.unmap_memory();
+
+            buffer
+        }
+
+        pub fn buffer(&self) -> &VkBuffer {
+            &self.buffer
+        }
+
+        pub fn map_to_gpu_and_unmap(&self) {
+            let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
+            unsafe {
+                memcpy(self.data, mapped.cast(), self.len as usize);
+            }
+            self.unmap_memory();
+        }
+
+        pub fn map_to_cpu_and_unmap(&mut self) -> Vec<T> where T: std::clone::Clone + Default {
+
+            let mut output = vec![T::default(); self.len as usize];
+
+            let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
+            unsafe {
+                memcpy(mapped.cast(), output.as_mut_ptr(), self.len as usize);
+            }
+            self.unmap_memory();
+
+            output
         }
 
         pub fn vksize(&self) -> VkDeviceSize {
-            (self.data.len() * size_of::<T>()) as VkDeviceSize
+            (self.len * size_of::<T>() as u32) as VkDeviceSize
         }
 
         pub fn destroy(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
@@ -1273,23 +1326,25 @@ pub mod vx {
 
     pub struct PushConstant<T> {
         stage: VkShaderStageFlags,
-        data : Vec<T>
+        data: *const T,
+        size: u32,
     }
 
     impl<T> PushConstant<T> {
-        pub fn new(stage: VkShaderStageFlagBits, data: Vec<T>) -> Self {
+        pub fn new(stage: VkShaderStageFlagBits, data: *const T, size: u32) -> Self {
             Self {
                 stage: stage as u32,
                 data: data,
+                size: size,
             }
         }
 
         pub fn vksize(&self) -> u32 {
-            (self.data.len() * size_of::<T>()) as u32
+            (self.size * size_of::<T>() as u32) as u32
         }
 
         pub fn as_ptr(&self) -> *const std::os::raw::c_void {
-            self.data.as_ptr() as *const std::os::raw::c_void
+            self.data as *const std::os::raw::c_void
         }
 
         pub fn stage(&self) -> VkShaderStageFlags {
@@ -1297,11 +1352,19 @@ pub mod vx {
         }
 
         pub fn range(&self) -> VkPushConstantRange {
-            VkPushConstantRange { stageFlags: self.stage, offset: 0, size: self.vksize() }
+            VkPushConstantRange {
+                stageFlags: self.stage,
+                offset: 0,
+                size: self.vksize(),
+            }
         }
 
         pub fn range_custom(&self, offset: u32, size: u32) -> VkPushConstantRange {
-            VkPushConstantRange { stageFlags: self.stage, offset: offset, size: size }
+            VkPushConstantRange {
+                stageFlags: self.stage,
+                offset: offset,
+                size: size,
+            }
         }
     }
 
