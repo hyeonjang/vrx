@@ -9,7 +9,7 @@ use std::any::{type_name, Any};
 use std::ffi::*;
 use std::mem::*;
 use std::ptr::*;
-use std::ptr::{copy_nonoverlapping as memcpy, null};
+use std::ptr::{copy_nonoverlapping, null};
 use std::str::*;
 use std::sync::{Mutex, Once};
 
@@ -1248,7 +1248,7 @@ pub mod vx {
 
             let mapped = buffer.map_memory(0, buffer.vksize(), 0).unwrap();
             unsafe {
-                memcpy(buffer.data, mapped.cast(), buffer.len as usize);
+                copy_nonoverlapping(buffer.data, mapped.cast(), buffer.len as usize);
             }
             buffer.unmap_memory();
 
@@ -1262,7 +1262,7 @@ pub mod vx {
         pub fn map_to_gpu_and_unmap(&self) {
             let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
             unsafe {
-                memcpy(self.data, mapped.cast(), self.len as usize);
+                copy_nonoverlapping(self.data, mapped.cast(), self.len as usize);
             }
             self.unmap_memory();
         }
@@ -1275,7 +1275,7 @@ pub mod vx {
 
             let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
             unsafe {
-                memcpy(mapped.cast(), output.as_mut_ptr(), self.len as usize);
+                copy_nonoverlapping(mapped.cast(), output.as_mut_ptr(), self.len as usize);
             }
             self.unmap_memory();
 
