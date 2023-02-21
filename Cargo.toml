@@ -1,14 +1,18 @@
 [package]
 name = "vkcholesky"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 links = "vulkan"
+
+[registires]
+my-registry = { index = "https://github.com/hyeonjang/vrx" }
 
 [dependencies]
 paste = "1.0"
 libc = "0.2.0"
 anyhow = "1.0"
 phf = { version = "0.11.1", features=["macros"] }
+winit = "0.18.0"
 
 [build-dependencies]
 bindgen = "0.60.0"
