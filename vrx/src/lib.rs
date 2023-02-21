@@ -33,6 +33,7 @@ pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf
     "VkPipelineLayoutCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
     "VkPipelineShaderStageCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
     "VkComputePipelineCreateInfo" => VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+    "VkWin32SurfaceCreateInfoKHR" => VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
 };
 
 macro_rules! impl_builder_for_vk_structure_t {
@@ -248,6 +249,17 @@ impl_builder_for_vk_structure_t!(
     }
 );
 
+#[cfg(target_os = "windows")]
+impl_builder_for_vk_structure_t!(
+    pub struct VkWin32SurfaceCreateInfoKHR {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkWin32SurfaceCreateFlagsKHR,
+        pub hinstance: HINSTANCE,
+        pub hwnd: HWND,
+    }
+);
+
 macro_rules! impl_default_for_vk_pointer_t {
     ( $x:ident ) => {
         impl Default for $x {
@@ -257,6 +269,7 @@ macro_rules! impl_default_for_vk_pointer_t {
         }
     };
 }
+
 
 impl_default_for_vk_pointer_t!(VkBuffer_T);
 impl_default_for_vk_pointer_t!(VkImage_T);

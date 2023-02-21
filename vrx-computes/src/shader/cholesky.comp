@@ -5,12 +5,12 @@ layout (constant_id = 0) const uint N_ROW = 0;
 layout (constant_id = 1) const uint N_COL = 0;
 
 layout ( push_constant ) uniform InT {
-	float matrix[];
-} mtx_in;
+	float A[];
+};
 
 layout(binding = 0) buffer OutT {
-    float matrix[];
-} mtx_out;
+    float L[];
+};
 
 uint mindex(uint irow, uint icol) {
 	return irow*N_ROW + icol;
@@ -26,5 +26,5 @@ void main()
 	// values[index] = 1.0;
 	// if (gl_GlobalInvocationID.x != 0) return;
 
-	mtx_out.matrix[0] = mtx_out.matrix.length();
+	mtx_out.matrix[0] = L.length();
 }

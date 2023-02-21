@@ -37,6 +37,7 @@ fn main() {
         );
         println!("cargo:rustc-link-lib=vulkan");
     // windows
+    // issue: https://github.com/rust-lang/rust-bindgen/issues/1556
     } else if cfg!(windows) {
         println!(
             "cargo:rustc-link-search={}",
@@ -93,10 +94,8 @@ fn main() {
             .blocklist_function("SetXStateFeaturesMask")
             .blocklist_function("UnhandledExceptionFilter")
             .blocklist_function("__C_specific_handler");
-    } else {
-        
     }
-
+    
     // rust header bindings
     let out_path = PathBuf::from("./src");
     bind_builder
@@ -104,8 +103,4 @@ fn main() {
         .expect("Unable to generate bindings")
         .write_to_file(out_path.join("vulkan_header.rs"))
         .expect("Couldn't write bindings!");
-
-    // spv generation
-    compile_shader();
-    println!("cargo:rerun-if-changed=src/shader/cholesky.comp");
 }

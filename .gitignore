@@ -2,4 +2,4 @@
 /ext
 /target
 /build
-/src/vulkan_header.rs
+/vrx/src/vulkan_header.rs
