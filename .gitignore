@@ -1,4 +1,5 @@
-/.vscode
+/.vscode/
 /ext
 /target
 /build
+/src/vulkan_header.rs
