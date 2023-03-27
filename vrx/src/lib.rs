@@ -3,299 +3,10 @@
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-include!("vulkan_header.rs");
-
 use std::any::{type_name, Any};
-use std::ffi::*;
-use std::mem::*;
-use std::ptr::*;
-use std::ptr::{copy_nonoverlapping, null};
-use std::str::*;
-use std::sync::{Mutex, Once};
-
-use anyhow::*;
 use paste::paste;
 
-use phf::phf_map;
-
-pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf_map! {
-    "VkBufferCreateInfo" => VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    "VkImageCreateInfo" => VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-    "VkDescriptorPoolCreateInfo" => VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-    "VkDescriptorSetLayoutCreateInfo" => VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-    "VkWriteDescriptorSet" => VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-    "VkCommandBufferBeginInfo" => VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-    "VkSubmitInfo" => VK_STRUCTURE_TYPE_SUBMIT_INFO,
-    "VkFenceCreateInfo" => VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-    "VkMappedMemoryRange" => VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-    "VkBufferMemoryBarrier" => VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-    "VkPipelineCacheCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
-    "VkPipelineLayoutCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-    "VkPipelineShaderStageCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-    "VkComputePipelineCreateInfo" => VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-    "VkWin32SurfaceCreateInfoKHR" => VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
-};
-
-macro_rules! impl_builder_for_vk_structure_t {
-    ( pub struct $type_:ty { $(pub $field:ident: $field_type:ty $(,)?)* } ) => {
-
-        paste! {
-            // builder contain info structure
-            pub struct [<$type_ Builder>] {
-                info: $type_,
-            }
-
-            impl [<$type_ Builder>] {
-                pub fn new() -> [<$type_ Builder>] {
-                    let mut builder = [<$type_ Builder>] {
-                        info:$type_::default()
-                    };
-
-                    let type_string = stringify!($type_);
-                    let sType = STRUCTURE_TYPE_CREATE_INFO_MAP.get(type_string);
-                    if let Some(x) = sType {
-                        builder.info.sType = *sType.unwrap();
-                    } else {
-                        panic!("No mapped structure type for {}, please insert", type_string);
-                    }
-
-                    builder
-                }
-
-                pub fn build(self) -> $type_ {
-                    // ?error checking is possible
-
-                    self.info
-                }
-
-                $(
-                    pub fn $field(mut self, $field:$field_type) -> [<$type_ Builder>] {
-                        self.info.$field = $field;
-                        self
-                    }
-                )*
-            }
-        }
-    };
-}
-
-// InfoBuilder implementations
-impl_builder_for_vk_structure_t!(
-    pub struct VkImageCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkImageCreateFlags,
-        pub imageType: VkImageType,
-        pub format: VkFormat,
-        pub extent: VkExtent3D,
-        pub mipLevels: u32,
-        pub arrayLayers: u32,
-        pub samples: VkSampleCountFlagBits,
-        pub tiling: VkImageTiling,
-        pub usage: VkImageUsageFlags,
-        pub sharingMode: VkSharingMode,
-        pub queueFamilyIndexCount: u32,
-        pub pQueueFamilyIndices: *const u32,
-        pub initialLayout: VkImageLayout,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkBufferCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkBufferCreateFlags,
-        pub size: VkDeviceSize,
-        pub usage: VkBufferUsageFlags,
-        pub sharingMode: VkSharingMode,
-        pub queueFamilyIndexCount: u32,
-        pub pQueueFamilyIndices: *const u32,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkDescriptorPoolCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkDescriptorPoolCreateFlags,
-        pub maxSets: u32,
-        pub poolSizeCount: u32,
-        pub pPoolSizes: *const VkDescriptorPoolSize,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkDescriptorSetLayoutCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkDescriptorSetLayoutCreateFlags,
-        pub bindingCount: u32,
-        pub pBindings: *const VkDescriptorSetLayoutBinding,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkWriteDescriptorSet {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub dstSet: VkDescriptorSet,
-        pub dstBinding: u32,
-        pub dstArrayElement: u32,
-        pub descriptorCount: u32,
-        pub descriptorType: VkDescriptorType,
-        pub pImageInfo: *const VkDescriptorImageInfo,
-        pub pBufferInfo: *const VkDescriptorBufferInfo,
-        pub pTexelBufferView: *const VkBufferView,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkCommandBufferBeginInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkCommandBufferUsageFlags,
-        pub pInheritanceInfo: *const VkCommandBufferInheritanceInfo,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkSubmitInfo {
-        pub sType: VkStructureType,
-        pub waitSemaphoreCount: u32,
-        pub pWaitSemaphores: *const VkSemaphore,
-        pub pWaitDstStageMask: *const VkPipelineStageFlags,
-        pub commandBufferCount: u32,
-        pub pCommandBuffers: *const VkCommandBuffer,
-        pub signalSemaphoreCount: u32,
-        pub pSignalSemaphores: *const VkSemaphore,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkFenceCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkFenceCreateFlags,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkPipelineCacheCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkPipelineCacheCreateFlags,
-        pub initialDataSize: usize,
-        pub pInitialData: *const ::std::os::raw::c_void,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkPipelineShaderStageCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkPipelineShaderStageCreateFlags,
-        pub stage: VkShaderStageFlagBits,
-        pub module: VkShaderModule,
-        pub pName: *const ::std::os::raw::c_char,
-        pub pSpecializationInfo: *const VkSpecializationInfo,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkPipelineLayoutCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkPipelineLayoutCreateFlags,
-        pub setLayoutCount: u32,
-        pub pSetLayouts: *const VkDescriptorSetLayout,
-        pub pushConstantRangeCount: u32,
-        pub pPushConstantRanges: *const VkPushConstantRange,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkComputePipelineCreateInfo {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkPipelineCreateFlags,
-        pub stage: VkPipelineShaderStageCreateInfo,
-        pub layout: VkPipelineLayout,
-        pub basePipelineHandle: VkPipeline,
-        pub basePipelineIndex: i32,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkMappedMemoryRange {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub memory: VkDeviceMemory,
-        pub offset: VkDeviceSize,
-        pub size: VkDeviceSize,
-    }
-);
-
-impl_builder_for_vk_structure_t!(
-    pub struct VkBufferMemoryBarrier {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub srcAccessMask: VkAccessFlags,
-        pub dstAccessMask: VkAccessFlags,
-        pub srcQueueFamilyIndex: u32,
-        pub dstQueueFamilyIndex: u32,
-        pub buffer: VkBuffer,
-        pub offset: VkDeviceSize,
-        pub size: VkDeviceSize,
-    }
-);
-
-#[cfg(target_os = "windows")]
-impl_builder_for_vk_structure_t!(
-    pub struct VkWin32SurfaceCreateInfoKHR {
-        pub sType: VkStructureType,
-        pub pNext: *const ::std::os::raw::c_void,
-        pub flags: VkWin32SurfaceCreateFlagsKHR,
-        pub hinstance: HINSTANCE,
-        pub hwnd: HWND,
-    }
-);
-
-macro_rules! impl_default_for_vk_pointer_t {
-    ( $x:ident ) => {
-        impl Default for $x {
-            fn default() -> $x {
-                $x { _unused: [0; 0] }
-            }
-        }
-    };
-}
-
-
-impl_default_for_vk_pointer_t!(VkBuffer_T);
-impl_default_for_vk_pointer_t!(VkImage_T);
-impl_default_for_vk_pointer_t!(VkInstance_T);
-impl_default_for_vk_pointer_t!(VkPhysicalDevice_T);
-impl_default_for_vk_pointer_t!(VkDevice_T);
-impl_default_for_vk_pointer_t!(VkQueue_T);
-impl_default_for_vk_pointer_t!(VkSemaphore_T);
-impl_default_for_vk_pointer_t!(VkCommandBuffer_T);
-impl_default_for_vk_pointer_t!(VkFence_T);
-impl_default_for_vk_pointer_t!(VkDeviceMemory_T);
-impl_default_for_vk_pointer_t!(VkEvent_T);
-impl_default_for_vk_pointer_t!(VkQueryPool_T);
-impl_default_for_vk_pointer_t!(VkBufferView_T);
-impl_default_for_vk_pointer_t!(VkImageView_T);
-impl_default_for_vk_pointer_t!(VkShaderModule_T);
-impl_default_for_vk_pointer_t!(VkPipelineCache_T);
-impl_default_for_vk_pointer_t!(VkPipelineLayout_T);
-impl_default_for_vk_pointer_t!(VkPipeline_T);
-impl_default_for_vk_pointer_t!(VkRenderPass_T);
-impl_default_for_vk_pointer_t!(VkDescriptorSetLayout_T);
-impl_default_for_vk_pointer_t!(VkSampler_T);
-impl_default_for_vk_pointer_t!(VkDescriptorSet_T);
-impl_default_for_vk_pointer_t!(VkDescriptorPool_T);
-impl_default_for_vk_pointer_t!(VkFramebuffer_T);
-impl_default_for_vk_pointer_t!(VkCommandPool_T);
+include!("vk_header.rs");
 
 #[macro_export]
 macro_rules! load_spv {
@@ -431,6 +142,10 @@ macro_rules! vkCmdBlock {
                 vkCmdCopyBuffer($cmd, $source, $target, $num, $buffer_copy);
             };
 
+            (COPY_BUFFER_TO_IMAGE($buffer:expr, $image:expr, $image_layout:expr, $region_count:expr, $p_regions:expr)) => {
+                vkCmdCopyBufferToImage($cmd, $buffer, $image, $image_layout, $region_count, $p_regions);
+            };
+
             (DISPATCH(
                 $group_count_x:expr,
                 $group_count_y:expr,
@@ -489,8 +204,12 @@ macro_rules! vkCmdBlock {
 //
 pub mod vx {
 
+    //@@todo processing extension
+    const EXTENTION: &[u8] = b"VK_EXT_debug_report\nVK_KHR_surface\nVK_KHR_win32_surface";
+
     use crate::*;
 
+    #[derive(Debug)]
     pub struct Context {
         pub instance: VkInstance,
         pub physical_devices: Vec<VkPhysicalDevice>,
@@ -522,9 +241,16 @@ pub mod vx {
                 let layers = CString::new("VK_LAYER_KHRONOS_validation").unwrap();
                 let ref_layers = &layers;
                 let pp_layers = vec![ref_layers.as_ptr()];
+                //@@todo automatical extension
                 let extensions = CString::new("VK_EXT_debug_report").unwrap();
+                let surf_extensions = CString::new("VK_KHR_surface").unwrap();
+                let win32_extensions = CString::new("VK_KHR_win32_surface").unwrap();
                 let ref_extensions = &extensions;
-                let pp_extensions = vec![ref_extensions.as_ptr()];
+                let pp_extensions = vec![
+                    ref_extensions.as_ptr(),
+                    surf_extensions.as_ptr(),
+                    win32_extensions.as_ptr(),
+                ];
 
                 let mut count: u32 = 10;
                 let mut layer_prop = VkLayerProperties {
@@ -541,8 +267,6 @@ pub mod vx {
                     .map(|x| x.layerName.as_ptr())
                     .collect();
 
-                println!("instance");
-
                 let instance_create_info = VkInstanceCreateInfo {
                     sType: VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                     pNext: null(),
@@ -550,7 +274,7 @@ pub mod vx {
                     pApplicationInfo: &app_info,
                     enabledLayerCount: 1,
                     ppEnabledLayerNames: pp_layers.as_ptr(),
-                    enabledExtensionCount: 1,
+                    enabledExtensionCount: pp_extensions.len() as u32,
                     ppEnabledExtensionNames: pp_extensions.as_ptr(),
                 };
                 vk_assert(vkCreateInstance(
@@ -621,6 +345,159 @@ pub mod vx {
             }
             mem_prop
         }
+
+        // for swapchain checking
+        pub fn get_physical_device_surface_capabilities_khr(
+            &self,
+            surface: VkSurfaceKHR,
+        ) -> VkSurfaceCapabilitiesKHR {
+            let null_extent = VkExtent2D {
+                width: 0,
+                height: 0,
+            };
+
+            let mut surface_capabilities_khr = VkSurfaceCapabilitiesKHR {
+                minImageCount: 0,
+                maxImageCount: 0,
+                currentExtent: null_extent,
+                minImageExtent: null_extent,
+                maxImageExtent: null_extent,
+                maxImageArrayLayers: 0,
+                supportedTransforms: 0,
+                currentTransform: 0,
+                supportedCompositeAlpha: 0,
+                supportedUsageFlags: 0,
+            };
+
+            unsafe {
+                vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+                    self.physical_devices[0],
+                    surface,
+                    &mut surface_capabilities_khr,
+                );
+            }
+
+            surface_capabilities_khr
+        }
+
+        pub fn get_physical_device_surface_formats_khr(
+            &self,
+            surface: VkSurfaceKHR,
+        ) -> Vec<VkSurfaceFormatKHR> {
+            let mut count = 0;
+            unsafe {
+                vkGetPhysicalDeviceSurfaceFormatsKHR(
+                    self.physical_devices[0],
+                    surface,
+                    &mut count,
+                    null_mut(),
+                );
+            }
+
+            let surface_format_dummy = VkSurfaceFormatKHR {
+                format: 0,
+                colorSpace: 0,
+            };
+            let mut surface_formats_khr: Vec<VkSurfaceFormatKHR> =
+                vec![surface_format_dummy.clone(); count as usize];
+            unsafe {
+                vkGetPhysicalDeviceSurfaceFormatsKHR(
+                    self.physical_devices[0],
+                    surface,
+                    &mut count,
+                    surface_formats_khr.as_mut_ptr(),
+                );
+            }
+
+            surface_formats_khr
+        }
+
+        pub fn get_physical_device_surface_present_modes_khr(
+            &self,
+            surface: VkSurfaceKHR,
+        ) -> Vec<VkPresentModeKHR> {
+            let mut count = 0;
+            unsafe {
+                vkGetPhysicalDeviceSurfacePresentModesKHR(
+                    self.physical_devices[0],
+                    surface,
+                    &mut count,
+                    null_mut(),
+                );
+            }
+
+            let mut surface_present_modes_khr: Vec<VkPresentModeKHR> = vec![0; count as usize];
+            unsafe {
+                vkGetPhysicalDeviceSurfacePresentModesKHR(
+                    self.physical_devices[0],
+                    surface,
+                    &mut count,
+                    surface_present_modes_khr.as_mut_ptr(),
+                );
+            }
+            surface_present_modes_khr
+        }
+
+        fn get_physical_device_queue_familly_properties(&self) -> Vec<VkQueueFamilyProperties> {
+            let mut queue_family_count = 0;
+
+            unsafe {
+                vkGetPhysicalDeviceQueueFamilyProperties(
+                    self.physical_devices[0],
+                    &mut queue_family_count,
+                    null_mut(),
+                );
+            }
+
+            let queue_family_properties = VkQueueFamilyProperties {
+                queueFlags: 0,
+                queueCount: 0,
+                timestampValidBits: 0,
+                minImageTransferGranularity: VkExtent3D {
+                    width: 0,
+                    height: 0,
+                    depth: 0,
+                },
+            };
+            let mut queue_familly_properties =
+                vec![queue_family_properties; queue_family_count as usize];
+            unsafe {
+                vkGetPhysicalDeviceQueueFamilyProperties(
+                    self.physical_devices[0],
+                    &mut queue_family_count,
+                    queue_familly_properties.as_mut_ptr(),
+                );
+            }
+            queue_familly_properties
+        }
+
+        #[cfg(all(target_os = "windows", feature = "graphics"))]
+        pub fn create_win32_surface_khr(
+            &self,
+            win32_surface_create_info: *const VkWin32SurfaceCreateInfoKHR,
+            p_allocator: Option<*const VkAllocationCallbacks>,
+        ) -> VkSurfaceKHR {
+            let mut surface = vk_instantiate!(VkSurfaceKHR);
+
+            unsafe {
+                if let Some(p) = p_allocator {
+                    vkCreateWin32SurfaceKHR(
+                        self.instance,
+                        win32_surface_create_info,
+                        p_allocator.unwrap(),
+                        &mut surface,
+                    );
+                } else {
+                    vkCreateWin32SurfaceKHR(
+                        self.instance,
+                        win32_surface_create_info,
+                        null(),
+                        &mut surface,
+                    );
+                }
+            }
+            surface
+        }
     }
 
     impl Default for Context {
@@ -629,6 +506,15 @@ pub mod vx {
         }
     }
 
+    impl Drop for Context {
+        fn drop(&mut self) {
+            unsafe {
+                vkDestroyInstance(self.instance, null());
+            }
+        }
+    }
+
+    // singleton
     pub fn vulkan_context() -> &'static Context {
         static mut CTX: MaybeUninit<Context> = MaybeUninit::uninit();
         static ONCE: Once = Once::new();
@@ -663,131 +549,188 @@ pub mod vx {
         }
     }
 
-    // impl<'a,  T> VkWrapper<T> for VxBuffer<'a, T> {
-    //     type VkStruct = VkBuffer;
+    #[derive(Eq, Hash, PartialEq, Copy, Clone, PartialOrd, Ord, Debug)]
+    pub enum QueueType {
+        graphics,
+        computes,
+        transfer,
+    }
 
-    //     fn as_raw(&self) -> Self::VkStruct {
-    //         self.buffer
-    //     }
+    // same as vulkanalia
+    #[derive(Clone, Debug)]
+    pub struct SwapchainSupport {
+        pub capabilities: VkSurfaceCapabilitiesKHR,
+        pub formats: Vec<VkSurfaceFormatKHR>,
+        pub present_modes: Vec<VkPresentModeKHR>,
+    }
 
-    //     fn as_raw_ptr(&self) -> &Self::VkStruct {
-    //         &self.buffer
-    //     }
-    // }
+    impl SwapchainSupport {
+        pub fn new(surface: VkSurfaceKHR) -> Self {
+            let ctx = vulkan_context();
+            Self {
+                capabilities: ctx.get_physical_device_surface_capabilities_khr(surface),
+                formats: ctx.get_physical_device_surface_formats_khr(surface),
+                present_modes: ctx.get_physical_device_surface_present_modes_khr(surface),
+            }
+        }
+
+        pub fn get_swapchain_surface_format(
+            &self,
+            format: VkFormat,
+            color_space: VkColorSpaceKHR,
+        ) -> VkSurfaceFormatKHR {
+            self.formats
+                .iter()
+                .cloned()
+                .find(|f| f.format == format && f.colorSpace == color_space)
+                .unwrap_or_else(|| self.formats[0])
+        }
+
+        pub fn get_swapchain_present_mode(
+            &self,
+            present_mode: VkPresentModeKHR,
+        ) -> VkPresentModeKHR {
+            self.present_modes
+                .iter()
+                .cloned()
+                .find(|m| *m == present_mode)
+                .unwrap_or(VK_PRESENT_MODE_FIFO_KHR)
+        }
+
+        pub fn get_swapchain_extent(&self) -> VkExtent2D {
+            self.capabilities.currentExtent
+        }
+    }
 
     pub struct Device {
         pub self_: VkDevice,
-        pub queue_family_index: u32,
-        pub command_pool: VkCommandPool,
+        pub queue_family_indices: HashMap<QueueType, Vec<u32>>,
+        pub command_pools: HashMap<QueueType, VkCommandPool>,
     }
 
     impl Device {
-        pub fn new() -> Self {
-            let mut device = vk_instantiate!(VkDevice);
-            let mut queue_family_index: u32 = 0;
-            let mut command_pool = vk_instantiate!(VkCommandPool);
-
+        // pub fn new(demands: Vec<(QueueType, u32)>) -> Self {
+        pub fn new(demands: &[(QueueType, u32)]) -> Self {
             let ctx = vulkan_context();
 
+            let queue_type_map = |queue_type: QueueType| -> VkQueueFlagBits {
+                match queue_type {
+                    QueueType::graphics => VK_QUEUE_GRAPHICS_BIT,
+                    QueueType::computes => VK_QUEUE_COMPUTE_BIT,
+                    QueueType::transfer => VK_QUEUE_TRANSFER_BIT,
+                }
+            };
+
             // queue family index
-            unsafe {
-                let mut qf_count = 0;
-                vkGetPhysicalDeviceQueueFamilyProperties(
-                    ctx.physical_devices[0],
-                    &mut qf_count,
-                    null_mut(),
-                );
+            demands
+                .to_vec()
+                .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            println!("{:?}", demands);
+            let mut queue_family_indices: HashMap<QueueType, Vec<u32>> = HashMap::new();
+            let mut device_queue_create_infos: Vec<VkDeviceQueueCreateInfo> = Vec::new();
 
-                // dummy
-                let qf_prop_inst = VkQueueFamilyProperties {
-                    queueFlags: 0,
-                    queueCount: 0,
-                    timestampValidBits: 0,
-                    minImageTransferGranularity: VkExtent3D {
-                        width: 0,
-                        height: 0,
-                        depth: 0,
-                    },
-                };
-                let mut qf_props = vec![qf_prop_inst; qf_count as usize];
-                vkGetPhysicalDeviceQueueFamilyProperties(
-                    ctx.physical_devices[0],
-                    &mut qf_count,
-                    qf_props.as_mut_ptr(),
-                );
-
-                let clt_cmpts: Vec<usize> = qf_props
+            // 1.
+            let find_queue_family = |flag: VkQueueFlagBits| -> Vec<u32> {
+                let index_collected: Vec<u32> = ctx
+                    .get_physical_device_queue_familly_properties()
                     .iter()
                     .enumerate()
-                    .filter(|(_i, x)| (x.queueFlags & (VK_QUEUE_COMPUTE_BIT as u32)) != 0)
-                    .map(|(i, _x)| i)
+                    .filter(|(_i, x)| (x.queueFlags & (flag as u32)) != 0)
+                    .map(|(i, _x)| i as u32)
                     .collect();
-                queue_family_index = clt_cmpts[0] as u32;
+                index_collected
+            };
+
+            // 2.
+            for demand in demands {
+                queue_family_indices.insert(demand.0, vec![]);
             }
 
-            // device
-            unsafe {
-                let queue_priority = 1.0;
-                let dvc_q_crt_info = VkDeviceQueueCreateInfo {
-                    sType: VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                    pNext: null(),
-                    flags: 0,
-                    queueFamilyIndex: queue_family_index,
-                    queueCount: 1,
-                    pQueuePriorities: &queue_priority,
+            //@@ warning
+            let mut tot_indices: Vec<u32> = vec![0, 1, 2, 3, 4, 5];
+            let mut process_queue_family =
+                |queue_type: QueueType, queue_count: u32, queue_priority: f32| {
+                    let q_inds = find_queue_family(queue_type_map(queue_type));
+                    let mut index = 0;
+                    for i in q_inds {
+                        for (j, ind) in tot_indices.iter().enumerate() {
+                            if i == *ind {
+                                index = tot_indices.remove(j);
+                                break;
+                            }
+                        }
+                    }
+                    let mut queue_type_indices = queue_family_indices.get_mut(&queue_type).unwrap();
+                    queue_type_indices.push(index);
+
+                    let device_queue_create_info = VkDeviceQueueCreateInfoBuilder::new()
+                        .queue_family_index(index)
+                        .queue_count(queue_count)
+                        .p_queue_priorities(&queue_priority)
+                        .build();
+                    device_queue_create_infos.push(device_queue_create_info);
                 };
 
-                let dvc_crt_info = VkDeviceCreateInfo {
-                    sType: VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-                    pNext: null(),
-                    flags: 0,
-                    queueCreateInfoCount: 1,
-                    pQueueCreateInfos: &dvc_q_crt_info,
-                    enabledLayerCount: 0,
-                    ppEnabledLayerNames: null(),
-                    enabledExtensionCount: 0,
-                    ppEnabledExtensionNames: null(),
-                    pEnabledFeatures: null(),
-                };
+            // 3. real execute
+            let queue_priority = 1.0;
+            for demand in demands {
+                process_queue_family(demand.0, demand.1, queue_priority)
+            }
+            println!("{:?}", queue_family_indices);
+
+            // device
+            let mut device = vk_instantiate!(VkDevice);
+            let device_create_info = VkDeviceCreateInfoBuilder::new()
+                .queue_create_info_count(device_queue_create_infos.len() as u32)
+                .p_queue_create_infos(device_queue_create_infos.as_ptr())
+                .build();
+
+            unsafe {
                 vk_assert(vkCreateDevice(
                     ctx.physical_devices[0],
-                    &dvc_crt_info,
+                    &device_create_info,
                     null(),
                     &mut device,
                 ));
             }
 
             // command pool
-            unsafe {
-                let cmd_pool_crt_info = VkCommandPoolCreateInfo {
-                    sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-                    pNext: null(),
-                    flags: 0,
-                    queueFamilyIndex: queue_family_index,
-                };
-                vk_assert(vkCreateCommandPool(
-                    device,
-                    &cmd_pool_crt_info,
-                    null(),
-                    &mut command_pool,
-                ));
+            let mut command_pools: HashMap<QueueType, VkCommandPool> = HashMap::new();
+            let mut create_command_pool = |queue_type: QueueType, index: u32| {
+                let mut command_pool = vk_instantiate!(VkCommandPool);
+                let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
+                    .queue_family_index(index)
+                    .build();
+                unsafe {
+                    vk_assert(vkCreateCommandPool(
+                        device,
+                        &command_pool_create_info,
+                        null(),
+                        &mut command_pool,
+                    ));
+                }
+                command_pools.insert(queue_type, command_pool);
+            };
+
+            for queue_family_index in &queue_family_indices {
+                create_command_pool(*queue_family_index.0, (queue_family_index.1)[0])
             }
 
             Self {
                 self_: device,
-                queue_family_index: queue_family_index,
-                command_pool: command_pool,
+                queue_family_indices: queue_family_indices,
+                command_pools: command_pools,
             }
         }
 
         //
         // vkqueues
-        pub fn get_queue(&self, index: usize) -> Result<VkQueue> {
+        pub fn get_queue(&self, queue_type: QueueType, index: usize) -> Result<VkQueue> {
             let mut queue = vk_instantiate!(VkQueue);
             unsafe {
                 vkGetDeviceQueue(
                     self.self_,
-                    self.queue_family_index,
+                    self.queue_family_indices.get(&queue_type).unwrap()[0],
                     index as u32,
                     &mut queue,
                 );
@@ -797,12 +740,13 @@ pub mod vx {
 
         pub fn queue_submit(
             &self,
+            queue_type: QueueType,
             index: usize,
             infos: *const VkSubmitInfo,
             info_count: u32,
             fence: VkFence,
         ) {
-            let queue = self.get_queue(index).unwrap();
+            let queue = self.get_queue(queue_type, index).unwrap();
 
             unsafe {
                 vk_assert(vkQueueSubmit(queue, info_count, infos, fence));
@@ -838,20 +782,49 @@ pub mod vx {
         }
 
         //
-        pub fn create_buffer(
+        impl_create_function!(self_, Buffer);
+        impl_create_function!(self_, Image);
+        impl_create_function!(self_, ImageView);
+        impl_create_function!(self_, Sampler);
+        impl_create_function!(self_, DescriptorPool);
+        impl_create_function!(self_, DescriptorSetLayout);
+        impl_create_function!(self_, Fence);
+        impl_create_function!(self_, RenderPass);
+        impl_create_function!(self_, Swapchain, KHR);
+
+        pub fn allocate_descriptor_sets(
             &self,
-            create_info: *const VkBufferCreateInfo,
-            p_allocator: Option<*const VkAllocationCallbacks>,
-        ) -> Result<VkBuffer> {
-            let mut buffer = vk_instantiate!(VkBuffer);
+            descriptor_set_alloc_info: &VkDescriptorSetAllocateInfo,
+        ) -> Result<Vec<VkDescriptorSet>> {
+            let mut descriptor_sets = vec![
+                vk_instantiate!(VkDescriptorSet);
+                descriptor_set_alloc_info.descriptorSetCount as usize
+            ];
+
             unsafe {
-                if let Some(p) = p_allocator {
-                    vkCreateBuffer(self.self_, create_info, p, &mut buffer);
-                } else {
-                    vkCreateBuffer(self.self_, create_info, null(), &mut buffer);
-                }
+                vkAllocateDescriptorSets(
+                    self.self_,
+                    descriptor_set_alloc_info,
+                    descriptor_sets.as_mut_ptr(),
+                );
             }
-            Ok(buffer)
+            Ok(descriptor_sets)
+        }
+
+        pub fn update_descriptor_sets(
+            &self,
+            descriptor_write_count: usize,
+            p_descriptor_writes: *const VkWriteDescriptorSet,
+        ) {
+            unsafe {
+                vkUpdateDescriptorSets(
+                    self.self_,
+                    descriptor_write_count as u32,
+                    p_descriptor_writes,
+                    0,
+                    null(),
+                );
+            }
         }
 
         //
@@ -864,6 +837,7 @@ pub mod vx {
         // command buffer
         pub fn allocate_command_buffer(
             &self,
+            command_type: QueueType,
             level: VkCommandBufferLevel,
         ) -> Result<VkCommandBuffer> {
             let mut cmd_buf = vk_instantiate!(VkCommandBuffer);
@@ -871,7 +845,7 @@ pub mod vx {
             let info = VkCommandBufferAllocateInfo {
                 sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                 pNext: null(),
-                commandPool: self.command_pool,
+                commandPool: *(self.command_pools.get(&command_type)).unwrap(),
                 level: level,
                 commandBufferCount: 1,
             };
@@ -883,18 +857,17 @@ pub mod vx {
 
         pub fn allocate_command_buffers(
             &self,
+            command_type: QueueType,
             level: VkCommandBufferLevel,
             count: u32,
         ) -> Result<Vec<VkCommandBuffer>> {
             let mut cmd_bufs = vec![vk_instantiate!(VkCommandBuffer); count as usize];
 
-            let info = VkCommandBufferAllocateInfo {
-                sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                pNext: null(),
-                commandPool: self.command_pool,
-                level: level,
-                commandBufferCount: count,
-            };
+            let info = VkCommandBufferAllocateInfoBuilder::new()
+                .command_pool(*self.command_pools.get(&command_type).unwrap())
+                .level(level)
+                .command_buffer_count(count)
+                .build();
 
             unsafe {
                 vk_assert(vkAllocateCommandBuffers(
@@ -904,25 +877,6 @@ pub mod vx {
                 ));
             }
             Ok(cmd_bufs)
-        }
-
-        //
-        // fence
-        pub fn create_fence(
-            &self,
-            info: VkFenceCreateInfo,
-            p_allocator: Option<*const VkAllocationCallbacks>,
-        ) -> Result<VkFence> {
-            let mut fence = vk_instantiate!(VkFence);
-
-            unsafe {
-                if let Some(p) = p_allocator {
-                    vkCreateFence(self.self_, &info, p_allocator.unwrap(), &mut fence);
-                } else {
-                    vkCreateFence(self.self_, &info, null(), &mut fence);
-                }
-            }
-            Ok(fence)
         }
 
         pub fn wait_for_fence(
@@ -965,13 +919,14 @@ pub mod vx {
 
         pub fn free_commands_buffers(
             &self,
+            command_type: QueueType,
             command_buffer_count: u32,
             p_command_buffers: *const VkCommandBuffer,
         ) {
             unsafe {
                 vkFreeCommandBuffers(
                     self.self_,
-                    self.command_pool,
+                    *self.command_pools.get(&command_type).unwrap(),
                     command_buffer_count,
                     p_command_buffers,
                 )
@@ -1030,7 +985,27 @@ pub mod vx {
                     pipelines.as_mut_ptr(),
                 ));
             }
+            Ok(pipelines)
+        }
 
+        pub fn create_graphics_pipelines(
+            &self,
+            pipeline_cache: VkPipelineCache,
+            create_info_count: u32,
+            pipeline_create_infos: *const VkGraphicsPipelineCreateInfo,
+        ) -> Result<Vec<VkPipeline>> {
+            let mut pipelines = vec![vk_instantiate!(VkPipeline); create_info_count as usize];
+
+            unsafe {
+                vk_assert(vkCreateGraphicsPipelines(
+                    self.self_,
+                    pipeline_cache,
+                    create_info_count,
+                    pipeline_create_infos,
+                    null(),
+                    pipelines.as_mut_ptr(),
+                ));
+            }
             Ok(pipelines)
         }
 
@@ -1056,6 +1031,14 @@ pub mod vx {
                 mem_prop_flags,
                 &self.self_,
             ))
+        }
+
+        pub fn create_vximage<'a>(
+            &'a self,
+            image_create_info: VkImageCreateInfo,
+            mem_prop_info: VkMemoryPropertyFlagBits,
+        ) -> Result<VxImage> {
+            Ok(VxImage::new(image_create_info, mem_prop_info, &self.self_))
         }
     }
 
@@ -1310,20 +1293,16 @@ pub mod vx {
         }
     }
 
-    pub struct VxImage<'a, 'b, T> {
+    pub struct VxImage<'a> {
         device: &'a VkDevice,
 
         image: VkImage,
         memory: VkDeviceMemory,
 
-        data: &'b mut T,
-        len: u32,
+        info: VkImageCreateInfo,
     }
 
-    impl<'a, 'b, T> Memory for VxImage<'a, 'b, T>
-    where
-        'a: 'b,
-    {
+    impl<'a> Memory for VxImage<'a> {
         fn device(&self) -> &VkDevice {
             self.device
         }
@@ -1352,7 +1331,7 @@ pub mod vx {
                     alignment: 0,
                     memoryTypeBits: 0,
                 };
-                vkGetImageMemoryRequirements(*self.device(), *self.image().unwrap(), &mut mem_req);
+                vkGetImageMemoryRequirements(*self.device(), *self.image(), &mut mem_req);
 
                 mem_req
             }
@@ -1373,29 +1352,23 @@ pub mod vx {
         }
     }
 
-    impl<'a, 'b, T> VxImage<'a, 'b, T>
-    where
-        'a: 'b,
-    {
+    impl<'a> VxImage<'a> {
         pub fn new(
-            len: u32,
-            data: &'b mut T,
-            pinfo: *const VkImageCreateInfo,
+            info: VkImageCreateInfo,
             mem_prop_flags: VkMemoryPropertyFlagBits,
             device: &'a VkDevice,
         ) -> Self {
             let mut image = vk_instantiate!(VkImage);
             unsafe {
-                vk_assert(vkCreateImage(*device, pinfo, null(), &mut image));
+                vk_assert(vkCreateImage(*device, &info, null(), &mut image));
             }
 
             let memory = vk_instantiate!(VkDeviceMemory);
             let mut vximage = Self {
-                device,
-                image,
-                memory,
-                data,
-                len,
+                device: device,
+                image: image,
+                memory: memory,
+                info: info,
             };
 
             vximage.allocate_memory(mem_prop_flags);
@@ -1403,6 +1376,37 @@ pub mod vx {
 
             vximage
         }
+
+        pub fn image(&self) -> &VkImage {
+            &self.image
+        }
+
+        pub fn create_image_view(&self) -> VkImageView {
+            let mut image_view = vk_instantiate!(VkImageView);
+            let image_view_create_info = VkImageViewCreateInfo {
+                sType: todo!(),
+                pNext: todo!(),
+                flags: todo!(),
+                image: self.image,
+                viewType: todo!(),
+                format: self.info.format,
+                components: todo!(),
+                subresourceRange: todo!(),
+            };
+
+            unsafe {
+                vkCreateImageView(
+                    *self.device,
+                    &image_view_create_info,
+                    null(),
+                    &mut image_view,
+                );
+            }
+
+            image_view
+        }
+
+        pub fn get_image_sub_resource_layers(&self) {}
     }
 
     pub struct PushConstant<T> {
