@@ -1,9 +1,11 @@
+#![allow(dead_code)]
+
 use std::ffi::CString;
 use std::ops::Index;
 use std::ptr::null;
 
-use vkcholesky::vx::*;
-use vkcholesky::*;
+use vrx::vx::*;
+use vrx::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Matrix<T, const R: usize, const C: usize> {
@@ -58,6 +60,7 @@ pub trait SparseSolver {
 
 const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 pub trait Factorizor {
+    // fn LU(&self);
     fn cholesky(&self);
 }
 
@@ -66,7 +69,8 @@ where
     T: std::fmt::Debug + std::marker::Copy + Default,
 {
     fn cholesky(&self) {
-        let device = vx::Device::new();
+        let device = vx::Device::new(&[(vx::QueueType::computes, 1)]);
+        println!("{:?}", device.queue_family_indices);
 
         let input_constant = PushConstant::new(
             VK_SHADER_STAGE_COMPUTE_BIT,
@@ -75,7 +79,8 @@ where
         );
 
         let mut out_values = [[T::default(); R]; C];
-        let len = out_values.len() * out_values[0].len();
+        let shape = (out_values.len() as u32, out_values[0].len() as u32);
+        let len = shape.0 * shape.1;
         let mut out_buffer = device
             .create_vxbuffer(
                 &mut out_values[0][0],
@@ -88,6 +93,51 @@ where
             )
             .unwrap();
         out_buffer.map_to_gpu_and_unmap();
+
+        let image_create_info = VkImageCreateInfoBuilder::new()
+            .imageType(VK_IMAGE_TYPE_2D)
+            .extent(VkExtent3D {
+                width: shape.0 as u32,
+                height: shape.1 as u32,
+                depth: 1,
+            })
+            .mipLevels(1)
+            .arrayLayers(1)
+            .format(VK_FORMAT_R32_SFLOAT)
+            .tiling(VK_IMAGE_TILING_OPTIMAL)
+            .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+            .usage((VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT) as u32)
+            .samples(VK_SAMPLE_COUNT_1_BIT)
+            .sharingMode(VK_SHARING_MODE_EXCLUSIVE)
+            .build();
+
+        let out_image = device
+            .create_vximage(image_create_info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+            .unwrap();
+
+        // let cmd = device
+        //     .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+        //     .unwrap();
+        // vkCmdBlock! {
+        //     THIS cmd;
+
+        //     let copy = VkBufferImageCopy {
+        //         bufferOffset: 0,
+        //         bufferRowLength: 0,
+        //         bufferImageHeight: 0,
+        //         imageSubresource: VkImageSubresourceLayers { aspectMask:VK_IMAGE_ASPECT_COLOR_BIT as u32, mipLevel:0, baseArrayLayer:0, layerCount:1 },
+        //         imageOffset: VkOffset3D { x: 0, y: 0, z: 0 },
+        //         imageExtent: VkExtent3D { width: shape.0, height: shape.1, depth: 1 },
+        //     };
+
+        //     COPY_BUFFER_TO_IMAGE(
+        //         *out_buffer.buffer(),
+        //         *out_image.image(),
+        //         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        //         1,
+        //         &copy
+        //     );
+        // };
 
         let spec0 = VkSpecializationMapEntry {
             constantID: 0,
@@ -112,21 +162,112 @@ where
         //
         // construct compute pipeline
         //
-        let descriptor = device.create_descriptor(1).unwrap();
         let buffer_descriptor = VkDescriptorBufferInfo {
             buffer: *out_buffer.buffer(),
             offset: 0,
             range: out_buffer.vksize(),
         };
 
-        let write_desc_set = VkWriteDescriptorSetBuilder::new()
-            .dstSet(descriptor.sets[0])
-            .dstBinding(0)
-            .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
-            .descriptorCount(1)
-            .pBufferInfo(&buffer_descriptor)
+        let sampler_create_info = VkSamplerCreateInfoBuilder::new().build();
+
+        let sampler = device.create_sampler(&sampler_create_info, None).unwrap();
+
+        let image_view_create_info = VkImageViewCreateInfoBuilder::new()
+            .image(*out_image.image())
+            .viewType(VK_IMAGE_VIEW_TYPE_2D)
+            .format(VK_FORMAT_R32_SFLOAT)
+            .subresourceRange(VkImageSubresourceRange {
+                aspectMask: VK_IMAGE_ASPECT_COLOR_BIT as u32,
+                baseMipLevel: 0,
+                levelCount: 1,
+                baseArrayLayer: 0,
+                layerCount: 1,
+            })
             .build();
-        descriptor.update(vec![write_desc_set]);
+
+        let image_view = device
+            .create_image_view(&image_view_create_info, None)
+            .unwrap();
+
+        let image_descriptor = VkDescriptorImageInfo {
+            sampler: sampler,
+            imageView: image_view,
+            imageLayout: 0,
+        };
+
+        let layout_bindings = vec![
+            VkDescriptorSetLayoutBinding {
+                binding: 0,
+                descriptorType: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                descriptorCount: 1,
+                stageFlags: VK_SHADER_STAGE_COMPUTE_BIT as u32,
+                pImmutableSamplers: null(),
+            },
+            VkDescriptorSetLayoutBinding {
+                binding: 1,
+                descriptorType: VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                descriptorCount: 1,
+                stageFlags: VK_SHADER_STAGE_COMPUTE_BIT as u32,
+                pImmutableSamplers: null(),
+            },
+        ];
+
+        let pool_sizes = vec![
+            VkDescriptorPoolSize {
+                type_: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                descriptorCount: 1,
+            },
+            VkDescriptorPoolSize {
+                type_: VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                descriptorCount: 1,
+            },
+        ];
+
+        let descriptor_pool_create_info = VkDescriptorPoolCreateInfoBuilder::new()
+            .maxSets(2)
+            .poolSizeCount(pool_sizes.len() as u32)
+            .pPoolSizes(pool_sizes.as_ptr())
+            .build();
+
+        let descriptor_pool = device
+            .create_descriptor_pool(&descriptor_pool_create_info, None)
+            .unwrap();
+
+        let descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfoBuilder::new()
+            .bindingCount(layout_bindings.len() as u32)
+            .pBindings(layout_bindings.as_ptr())
+            .build();
+
+        let descriptor_set_layout = device
+            .create_descriptor_set_layout(&descriptor_set_layout_create_info, None)
+            .unwrap();
+
+        let descriptor_set_alloc_info = VkDescriptorSetAllocateInfoBuilder::new()
+            .descriptorPool(descriptor_pool)
+            .descriptorSetCount(1)
+            .pSetLayouts(&descriptor_set_layout)
+            .build();
+
+        let descriptor_sets = device
+            .allocate_descriptor_sets(&descriptor_set_alloc_info)
+            .unwrap();
+
+        let write_desc_sets = vec![
+            VkWriteDescriptorSetBuilder::new()
+                .dstSet(descriptor_sets[0])
+                .dstBinding(0)
+                .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+                .descriptorCount(1)
+                .pBufferInfo(&buffer_descriptor)
+                .build(),
+            // VkWriteDescriptorSetBuilder::new()
+            //     .dstSet(descriptor_sets[1])
+            //     .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+            //     .descriptorCount(1)
+            //     .pImageInfo(&image_descriptor)
+            //     .build(),
+        ];
+        device.update_descriptor_sets(write_desc_sets.len(), write_desc_sets.as_ptr());
 
         // compute pipeline
         let name = CString::new("main").unwrap();
@@ -145,8 +286,8 @@ where
             .flags(0)
             .pushConstantRangeCount(1)
             .pPushConstantRanges(&input_constant.range())
-            .setLayoutCount(descriptor.set_layouts.len() as u32)
-            .pSetLayouts(descriptor.set_layouts.as_ptr())
+            .setLayoutCount(1)
+            .pSetLayouts(&descriptor_set_layout)
             .build();
 
         let pipeline_layout = device
@@ -174,7 +315,7 @@ where
         //
         // pipepline submit commands
         let cmd = device
-            .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+            .allocate_command_buffer(vx::QueueType::computes, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
             .unwrap();
         vkCmdBlock! {
             THIS cmd;
@@ -196,7 +337,7 @@ where
                 VK_PIPELINE_BIND_POINT_COMPUTE,
                 pipeline_layout,
                 0, 1,
-                descriptor.sets.as_ptr(),
+                descriptor_sets.as_ptr(),
                 0, null()
             );
 
@@ -222,7 +363,7 @@ where
         let fence_create_info = VkFenceCreateInfoBuilder::new()
             .flags(VK_FENCE_CREATE_SIGNALED_BIT.try_into().unwrap())
             .build();
-        let fence1 = device.create_fence(fence_create_info, None).unwrap();
+        let fence1 = device.create_fence(&fence_create_info, None).unwrap();
         device.reset_fence(1, &fence1);
 
         let wait_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT as u32;
@@ -232,7 +373,7 @@ where
             .pCommandBuffers(&cmd)
             .build();
 
-        device.queue_submit(0, &submit_info, 1, fence1);
+        device.queue_submit(vx::QueueType::computes, 0, &submit_info, 1, fence1);
         device.wait_for_fence(1, &fence1, false, u64::MAX);
 
         // let new_mapped = out_buffer
