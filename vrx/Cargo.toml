@@ -13,3 +13,7 @@ phf = { version = "0.11.1", features=["macros"] }
 
 [build-dependencies]
 bindgen = "0.60.0"
+
+[features]
+graphics = []
+computes = []
