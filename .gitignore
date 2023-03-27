@@ -2,4 +2,6 @@
 /ext
 /target
 /build
-/vrx/src/vulkan_header.rs
+/vrx/src/vk_computes_header.rs
+/vrx/src/vk_graphics_header.rs
+*.spv
