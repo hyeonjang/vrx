@@ -3,8 +3,8 @@
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-use std::any::{type_name, Any};
 use paste::paste;
+use std::any::{type_name, Any};
 
 include!("vk_header.rs");
 
@@ -15,11 +15,8 @@ macro_rules! load_spv {
     }};
 }
 
-#[macro_export]
 macro_rules! vk_instantiate {
     ( $x:ident ) => {{
-        use paste::paste;
-
         paste! {
             let mut type_T = [<$x _T>]::default();
             let mut type_inst : *mut [<$x _T>] = &mut type_T;
@@ -156,6 +153,37 @@ macro_rules! vkCmdBlock {
                     );
             };
 
+            (DRAW(
+                $vertex_count:expr,
+                $instance_count:expr,
+                $first_vertex:expr,
+                $first_instance:expr)) => {
+                    vkCmdDraw(
+                        $cmd,
+                        $vertex_count,
+                        $instance_count,
+                        $first_vertex,
+                        $first_instance
+                    );
+            };
+
+            (BEGIN_RENDER_PASS(
+                $render_pass_begin_info:expr,
+                $vk_subpass_contents:expr
+            )) => {
+                vkCmdBeginRenderPass(
+                    $cmd,
+                    $render_pass_begin_info,
+                    $vk_subpass_contents
+                );
+            };
+
+            (END_RENDER_PASS()) => {
+                vkCmdEndRenderPass(
+                    $cmd
+                );
+            };
+
             (PUSH_CONSTANT(
                 $layout: expr,
                 $stageFlags: expr,
@@ -239,8 +267,9 @@ pub mod vx {
 
                 // careful to CString lifetime
                 let layers = CString::new("VK_LAYER_KHRONOS_validation").unwrap();
+                let lunarg_layers = CString::new("VK_LAYER_LUNARG_standard_validation").unwrap();
                 let ref_layers = &layers;
-                let pp_layers = vec![ref_layers.as_ptr()];
+                let pp_layers = vec![ref_layers.as_ptr(), lunarg_layers.as_ptr()];
                 //@@todo automatical extension
                 let extensions = CString::new("VK_EXT_debug_report").unwrap();
                 let surf_extensions = CString::new("VK_KHR_surface").unwrap();
@@ -346,10 +375,29 @@ pub mod vx {
             mem_prop
         }
 
-        // for swapchain checking
+        pub fn get_physical_device_surface_support_khr(
+            &self, 
+            queue_family_index: u32,
+            surface: VkSurfaceKHR
+        ) -> VkBool32 {
+            let mut supported = VK_FALSE;
+            unsafe {
+                vk_assert(
+                    vkGetPhysicalDeviceSurfaceSupportKHR(
+                        self.physical_devices[0],
+                        queue_family_index,
+                        surface,
+                        &mut supported
+                    )
+                )
+            }
+            supported
+        }
+
+
         pub fn get_physical_device_surface_capabilities_khr(
             &self,
-            surface: VkSurfaceKHR,
+            surface: &VkSurfaceKHR,
         ) -> VkSurfaceCapabilitiesKHR {
             let null_extent = VkExtent2D {
                 width: 0,
@@ -372,7 +420,7 @@ pub mod vx {
             unsafe {
                 vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
                     self.physical_devices[0],
-                    surface,
+                    *surface,
                     &mut surface_capabilities_khr,
                 );
             }
@@ -382,13 +430,13 @@ pub mod vx {
 
         pub fn get_physical_device_surface_formats_khr(
             &self,
-            surface: VkSurfaceKHR,
+            surface: &VkSurfaceKHR,
         ) -> Vec<VkSurfaceFormatKHR> {
             let mut count = 0;
             unsafe {
                 vkGetPhysicalDeviceSurfaceFormatsKHR(
                     self.physical_devices[0],
-                    surface,
+                    *surface,
                     &mut count,
                     null_mut(),
                 );
@@ -403,7 +451,7 @@ pub mod vx {
             unsafe {
                 vkGetPhysicalDeviceSurfaceFormatsKHR(
                     self.physical_devices[0],
-                    surface,
+                    *surface,
                     &mut count,
                     surface_formats_khr.as_mut_ptr(),
                 );
@@ -414,13 +462,13 @@ pub mod vx {
 
         pub fn get_physical_device_surface_present_modes_khr(
             &self,
-            surface: VkSurfaceKHR,
+            surface: &VkSurfaceKHR,
         ) -> Vec<VkPresentModeKHR> {
             let mut count = 0;
             unsafe {
                 vkGetPhysicalDeviceSurfacePresentModesKHR(
                     self.physical_devices[0],
-                    surface,
+                    *surface,
                     &mut count,
                     null_mut(),
                 );
@@ -430,7 +478,7 @@ pub mod vx {
             unsafe {
                 vkGetPhysicalDeviceSurfacePresentModesKHR(
                     self.physical_devices[0],
-                    surface,
+                    *surface,
                     &mut count,
                     surface_present_modes_khr.as_mut_ptr(),
                 );
@@ -565,12 +613,12 @@ pub mod vx {
     }
 
     impl SwapchainSupport {
-        pub fn new(surface: VkSurfaceKHR) -> Self {
+        pub fn new(surface: &VkSurfaceKHR) -> Self {
             let ctx = vulkan_context();
             Self {
-                capabilities: ctx.get_physical_device_surface_capabilities_khr(surface),
-                formats: ctx.get_physical_device_surface_formats_khr(surface),
-                present_modes: ctx.get_physical_device_surface_present_modes_khr(surface),
+                capabilities: ctx.get_physical_device_surface_capabilities_khr(&surface),
+                formats: ctx.get_physical_device_surface_formats_khr(&surface),
+                present_modes: ctx.get_physical_device_surface_present_modes_khr(&surface),
             }
         }
 
@@ -641,12 +689,12 @@ pub mod vx {
                 index_collected
             };
 
-            // 2.
+            // 2. initialize queue family index
             for demand in demands {
                 queue_family_indices.insert(demand.0, vec![]);
             }
 
-            //@@ warning
+            // 3. resource (indices) allocation
             let mut tot_indices: Vec<u32> = vec![0, 1, 2, 3, 4, 5];
             let mut process_queue_family =
                 |queue_type: QueueType, queue_count: u32, queue_priority: f32| {
@@ -672,17 +720,20 @@ pub mod vx {
                 };
 
             // 3. real execute
-            let queue_priority = 1.0;
+            let queue_priority = 0.9;
             for demand in demands {
                 process_queue_family(demand.0, demand.1, queue_priority)
             }
-            println!("{:?}", queue_family_indices);
 
             // device
+            let vk_khr_swapchain = b"VK_KHR_swapchain\0".as_ptr() as *const i8;
+            let extensions = [vk_khr_swapchain];
             let mut device = vk_instantiate!(VkDevice);
             let device_create_info = VkDeviceCreateInfoBuilder::new()
                 .queue_create_info_count(device_queue_create_infos.len() as u32)
                 .p_queue_create_infos(device_queue_create_infos.as_ptr())
+                .enabled_extension_count(extensions.len() as u32)
+                .pp_enabled_extension_names(extensions.as_ptr())
                 .build();
 
             unsafe {
@@ -742,8 +793,8 @@ pub mod vx {
             &self,
             queue_type: QueueType,
             index: usize,
-            infos: *const VkSubmitInfo,
             info_count: u32,
+            infos: *const VkSubmitInfo,
             fence: VkFence,
         ) {
             let queue = self.get_queue(queue_type, index).unwrap();
@@ -789,8 +840,10 @@ pub mod vx {
         impl_create_function!(self_, DescriptorPool);
         impl_create_function!(self_, DescriptorSetLayout);
         impl_create_function!(self_, Fence);
-        impl_create_function!(self_, RenderPass);
+        impl_create_function!(self_, Semaphore);
         impl_create_function!(self_, Swapchain, KHR);
+        impl_create_function!(self_, RenderPass);
+        impl_create_function!(self_, Framebuffer);
 
         pub fn allocate_descriptor_sets(
             &self,
@@ -1007,6 +1060,63 @@ pub mod vx {
                 ));
             }
             Ok(pipelines)
+        }
+
+        pub fn get_swapchain_images_khr(&self, swapchain: VkSwapchainKHR) -> Vec<VkImage> {
+            // get images count
+            let mut n_images: u32 = 0;
+            unsafe {
+                vk_assert(vkGetSwapchainImagesKHR(
+                    self.self_,
+                    swapchain,
+                    &mut n_images,
+                    null_mut(),
+                ));
+            }
+            let mut images = vec![vk_instantiate!(VkImage); n_images as usize];
+            unsafe {
+                vk_assert(vkGetSwapchainImagesKHR(
+                    self.self_,
+                    swapchain,
+                    &mut n_images,
+                    images.as_mut_ptr(),
+                ));
+            }
+            images
+        }
+
+        pub fn acquire_next_image_khr(
+            &self,
+            swapchain: VkSwapchainKHR,
+            timeout: u64,
+            semaphore: VkSemaphore,
+            fence: VkFence,
+        ) -> u32 {
+            let mut image_index = 0;
+            unsafe {
+                vk_assert(vkAcquireNextImageKHR(
+                    self.self_,
+                    swapchain,
+                    timeout,
+                    semaphore,
+                    fence,
+                    &mut image_index,
+                ));
+            }
+            image_index
+        }
+
+        pub fn queue_present_khr(
+            &self,
+            queue_type: QueueType,
+            index: usize,
+            present_info: &VkPresentInfoKHR,
+        ) {
+            let queue = self.get_queue(queue_type, index).unwrap();
+
+            unsafe {
+                vkQueuePresentKHR(queue, present_info);
+            }
         }
 
         //

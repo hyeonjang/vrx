@@ -37,6 +37,7 @@ pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf
     "VkCommandBufferAllocateInfo" => VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
     "VkSubmitInfo" => VK_STRUCTURE_TYPE_SUBMIT_INFO,
     "VkFenceCreateInfo" => VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    "VkSemaphoreCreateInfo" => VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     "VkMappedMemoryRange" => VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
     "VkBufferMemoryBarrier" => VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
     "VkPipelineVertexInputStateCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -47,6 +48,9 @@ pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf
     "VkPipelineColorBlendStateCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
     "VkPipelineDynamicStateCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
     "VkRenderPassCreateInfo" => VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+    "VkRenderPassBeginInfo" => VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+    "VkFramebufferCreateInfo" => VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+    "VkPresentInfoKHR" => VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
     "VkPipelineCacheCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
     "VkPipelineLayoutCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
     "VkPipelineShaderStageCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -380,6 +384,14 @@ impl_builder_for_vk_structure_t!(
 );
 
 impl_builder_for_vk_structure_t!(
+    pub struct VkSemaphoreCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkSemaphoreCreateFlags,
+    }
+);
+
+impl_builder_for_vk_structure_t!(
     pub struct VkPipelineVertexInputStateCreateInfo {
         pub sType: VkStructureType,
         pub pNext: *const ::std::os::raw::c_void,
@@ -483,6 +495,18 @@ impl_builder_for_vk_structure_t!(
 );
 
 impl_builder_for_vk_structure_t!(
+    pub struct VkRenderPassBeginInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub renderPass: VkRenderPass,
+        pub framebuffer: VkFramebuffer,
+        pub renderArea: VkRect2D,
+        pub clearValueCount: u32,
+        pub pClearValues: *const VkClearValue,
+    }
+);
+
+impl_builder_for_vk_structure_t!(
     pub struct VkPipelineCacheCreateInfo {
         pub sType: VkStructureType,
         pub pNext: *const ::std::os::raw::c_void,
@@ -563,6 +587,19 @@ impl_builder_for_vk_structure_t!(
         pub width: u32,
         pub height: u32,
         pub layers: u32,
+    }
+);
+
+impl_builder_for_vk_structure_t!(
+    pub struct VkPresentInfoKHR {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub waitSemaphoreCount: u32,
+        pub pWaitSemaphores: *const VkSemaphore,
+        pub swapchainCount: u32,
+        pub pSwapchains: *const VkSwapchainKHR,
+        pub pImageIndices: *const u32,
+        pub pResults: *mut VkResult,
     }
 );
 
@@ -658,6 +695,18 @@ impl_builder_for_vk_none_structure_t!(
         pub pDepthStencilAttachment: *const VkAttachmentReference,
         pub preserveAttachmentCount: u32,
         pub pPreserveAttachments: *const u32,
+    }
+);
+
+impl_builder_for_vk_none_structure_t!(
+    pub struct VkSubpassDependency {
+        pub srcSubpass: u32,
+        pub dstSubpass: u32,
+        pub srcStageMask: VkPipelineStageFlags,
+        pub dstStageMask: VkPipelineStageFlags,
+        pub srcAccessMask: VkAccessFlags,
+        pub dstAccessMask: VkAccessFlags,
+        pub dependencyFlags: VkDependencyFlags,
     }
 );
 
