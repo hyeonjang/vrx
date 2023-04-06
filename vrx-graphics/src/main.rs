@@ -225,7 +225,7 @@ impl GraphicsPipelineProperties {
             .build();
 
         let color_blend_attachment_state = VkPipelineColorBlendAttachmentStateBuilder::new()
-            .color_write_mask(VK_COLOR_COMPONENT_R_BIT as u32)
+            .color_write_mask(VK_COLOR_COMPONENT_ALL_BIT as u32)
             .blend_enable(VK_FALSE)
             .src_color_blend_factor(VK_BLEND_FACTOR_ONE)
             .dst_color_blend_factor(VK_BLEND_FACTOR_ZERO)

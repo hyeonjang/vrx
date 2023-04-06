@@ -16,9 +16,9 @@ use anyhow::*;
 use phf::phf_map;
 
 pub const VK_COLOR_COMPONENT_ALL_BIT: VkColorComponentFlagBits = (VK_COLOR_COMPONENT_R_BIT
-    & VK_COLOR_COMPONENT_B_BIT
-    & VK_COLOR_COMPONENT_G_BIT
-    & VK_COLOR_COMPONENT_A_BIT);
+    | VK_COLOR_COMPONENT_B_BIT
+    | VK_COLOR_COMPONENT_G_BIT
+    | VK_COLOR_COMPONENT_A_BIT);
 
 pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf_map! {
     "VkDeviceQueueCreateInfo" => VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
