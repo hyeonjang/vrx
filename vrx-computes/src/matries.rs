@@ -95,20 +95,20 @@ where
         out_buffer.map_to_gpu_and_unmap();
 
         let image_create_info = VkImageCreateInfoBuilder::new()
-            .imageType(VK_IMAGE_TYPE_2D)
+            .image_type(VK_IMAGE_TYPE_2D)
             .extent(VkExtent3D {
                 width: shape.0 as u32,
                 height: shape.1 as u32,
                 depth: 1,
             })
-            .mipLevels(1)
-            .arrayLayers(1)
+            .mip_levels(1)
+            .array_layers(1)
             .format(VK_FORMAT_R32_SFLOAT)
             .tiling(VK_IMAGE_TILING_OPTIMAL)
-            .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+            .initial_layout(VK_IMAGE_LAYOUT_UNDEFINED)
             .usage((VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT) as u32)
             .samples(VK_SAMPLE_COUNT_1_BIT)
-            .sharingMode(VK_SHARING_MODE_EXCLUSIVE)
+            .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
             .build();
 
         let out_image = device
@@ -174,9 +174,9 @@ where
 
         let image_view_create_info = VkImageViewCreateInfoBuilder::new()
             .image(*out_image.image())
-            .viewType(VK_IMAGE_VIEW_TYPE_2D)
+            .view_type(VK_IMAGE_VIEW_TYPE_2D)
             .format(VK_FORMAT_R32_SFLOAT)
-            .subresourceRange(VkImageSubresourceRange {
+            .subresource_range(VkImageSubresourceRange {
                 aspectMask: VK_IMAGE_ASPECT_COLOR_BIT as u32,
                 baseMipLevel: 0,
                 levelCount: 1,
@@ -224,9 +224,9 @@ where
         ];
 
         let descriptor_pool_create_info = VkDescriptorPoolCreateInfoBuilder::new()
-            .maxSets(2)
-            .poolSizeCount(pool_sizes.len() as u32)
-            .pPoolSizes(pool_sizes.as_ptr())
+            .max_sets(2)
+            .pool_size_count(pool_sizes.len() as u32)
+            .p_pool_sizes(pool_sizes.as_ptr())
             .build();
 
         let descriptor_pool = device
@@ -234,8 +234,8 @@ where
             .unwrap();
 
         let descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfoBuilder::new()
-            .bindingCount(layout_bindings.len() as u32)
-            .pBindings(layout_bindings.as_ptr())
+            .binding_count(layout_bindings.len() as u32)
+            .p_bindings(layout_bindings.as_ptr())
             .build();
 
         let descriptor_set_layout = device
@@ -243,9 +243,9 @@ where
             .unwrap();
 
         let descriptor_set_alloc_info = VkDescriptorSetAllocateInfoBuilder::new()
-            .descriptorPool(descriptor_pool)
-            .descriptorSetCount(1)
-            .pSetLayouts(&descriptor_set_layout)
+            .descriptor_pool(descriptor_pool)
+            .descriptor_set_count(1)
+            .p_set_layouts(&descriptor_set_layout)
             .build();
 
         let descriptor_sets = device
@@ -254,11 +254,11 @@ where
 
         let write_desc_sets = vec![
             VkWriteDescriptorSetBuilder::new()
-                .dstSet(descriptor_sets[0])
-                .dstBinding(0)
-                .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
-                .descriptorCount(1)
-                .pBufferInfo(&buffer_descriptor)
+                .dst_set(descriptor_sets[0])
+                .dst_binding(0)
+                .descriptor_type(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+                .descriptor_count(1)
+                .p_buffer_info(&buffer_descriptor)
                 .build(),
             // VkWriteDescriptorSetBuilder::new()
             //     .dstSet(descriptor_sets[1])
@@ -276,7 +276,7 @@ where
         // pipeline
         let pipeline_cache_create_info = VkPipelineCacheCreateInfoBuilder::new()
             .flags(0)
-            .initialDataSize(0)
+            .initial_data_size(0)
             .build();
         let pipeline_cache = device
             .create_pipeline_cache(&pipeline_cache_create_info)
@@ -284,10 +284,10 @@ where
 
         let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
             .flags(0)
-            .pushConstantRangeCount(1)
-            .pPushConstantRanges(&input_constant.range())
-            .setLayoutCount(1)
-            .pSetLayouts(&descriptor_set_layout)
+            .push_constant_range_count(1)
+            .p_push_constant_ranges(&input_constant.range())
+            .set_layout_count(1)
+            .p_set_layouts(&descriptor_set_layout)
             .build();
 
         let pipeline_layout = device
@@ -297,15 +297,15 @@ where
         let pipeline_stage_create_info = VkPipelineShaderStageCreateInfoBuilder::new()
             .stage(VK_SHADER_STAGE_COMPUTE_BIT)
             .module(device.create_shader_module(COMP_SPV).unwrap())
-            .pName(ref_name.as_ptr() as *const i8)
-            .pSpecializationInfo(&spec_info)
+            .p_name(ref_name.as_ptr() as *const i8)
+            .p_specialization_info(&spec_info)
             .build();
 
         let compute_pipeline_create_info = VkComputePipelineCreateInfoBuilder::new()
             .flags(0)
             .stage(pipeline_stage_create_info)
             .layout(pipeline_layout)
-            .basePipelineIndex(0)
+            .base_pipeline_index(0)
             .build();
         let pipelines = device
             .create_compute_pipelines(pipeline_cache, 1, &compute_pipeline_create_info)
@@ -346,10 +346,10 @@ where
             let buffer_barrier = VkBufferMemoryBarrierBuilder::new()
                 .buffer(*(out_buffer.buffer()))
                 .size(VK_WHOLE_SIZE as u64)
-                .srcAccessMask(VK_ACCESS_SHADER_WRITE_BIT.try_into().unwrap())
-                .dstAccessMask(VK_ACCESS_TRANSFER_READ_BIT.try_into().unwrap())
-                .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
-                .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED as u32)
+                .src_access_mask(VK_ACCESS_SHADER_WRITE_BIT.try_into().unwrap())
+                .dst_access_mask(VK_ACCESS_TRANSFER_READ_BIT.try_into().unwrap())
+                .src_queue_family_index(VK_QUEUE_FAMILY_IGNORED as u32)
+                .dst_queue_family_index(VK_QUEUE_FAMILY_IGNORED as u32)
                 .build();
 
             PIPELINE_BARRIER(
@@ -368,12 +368,12 @@ where
 
         let wait_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT as u32;
         let submit_info = VkSubmitInfoBuilder::new()
-            .pWaitDstStageMask(&wait_stage_mask)
-            .commandBufferCount(1)
-            .pCommandBuffers(&cmd)
+            .p_wait_dst_stage_mask(&wait_stage_mask)
+            .command_buffer_count(1)
+            .p_command_buffers(&cmd)
             .build();
 
-        device.queue_submit(vx::QueueType::computes, 0, &submit_info, 1, fence1);
+        device.queue_submit(vx::QueueType::computes, 0, 1, &submit_info, fence1);
         device.wait_for_fence(1, &fence1, false, u64::MAX);
 
         // let new_mapped = out_buffer
