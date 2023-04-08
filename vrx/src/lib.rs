@@ -15,6 +15,7 @@ macro_rules! load_spv {
     }};
 }
 
+#[macro_export]
 macro_rules! vk_instantiate {
     ( $x:ident ) => {{
         paste! {
@@ -376,24 +377,21 @@ pub mod vx {
         }
 
         pub fn get_physical_device_surface_support_khr(
-            &self, 
+            &self,
             queue_family_index: u32,
-            surface: VkSurfaceKHR
+            surface: VkSurfaceKHR,
         ) -> VkBool32 {
             let mut supported = VK_FALSE;
             unsafe {
-                vk_assert(
-                    vkGetPhysicalDeviceSurfaceSupportKHR(
-                        self.physical_devices[0],
-                        queue_family_index,
-                        surface,
-                        &mut supported
-                    )
-                )
+                vk_assert(vkGetPhysicalDeviceSurfaceSupportKHR(
+                    self.physical_devices[0],
+                    queue_family_index,
+                    surface,
+                    &mut supported,
+                ))
             }
             supported
         }
-
 
         pub fn get_physical_device_surface_capabilities_khr(
             &self,
@@ -832,7 +830,7 @@ pub mod vx {
             Ok(module)
         }
 
-        //
+        // create wrapping with macro
         impl_create_function!(self_, Buffer);
         impl_create_function!(self_, Image);
         impl_create_function!(self_, ImageView);
@@ -844,6 +842,55 @@ pub mod vx {
         impl_create_function!(self_, Swapchain, KHR);
         impl_create_function!(self_, RenderPass);
         impl_create_function!(self_, Framebuffer);
+        impl_create_function!(self_, PipelineCache);
+        impl_create_function!(self_, PipelineLayout);
+
+        // destroy wrapping with macro
+        impl_destroy_function!(self_, Buffer);
+        impl_destroy_function!(self_, Framebuffer);
+        impl_destroy_function!(self_, Fence);
+
+        pub fn create_compute_pipelines(
+            &self,
+            pipeline_cache: VkPipelineCache,
+            create_info_count: u32,
+            pipeline_create_infos: *const VkComputePipelineCreateInfo,
+        ) -> Result<Vec<VkPipeline>> {
+            let mut pipelines = vec![vk_instantiate!(VkPipeline); create_info_count as usize];
+
+            unsafe {
+                vk_assert(vkCreateComputePipelines(
+                    self.self_,
+                    pipeline_cache,
+                    create_info_count,
+                    pipeline_create_infos,
+                    null(),
+                    pipelines.as_mut_ptr(),
+                ));
+            }
+            Ok(pipelines)
+        }
+
+        pub fn create_graphics_pipelines(
+            &self,
+            pipeline_cache: VkPipelineCache,
+            create_info_count: u32,
+            pipeline_create_infos: *const VkGraphicsPipelineCreateInfo,
+        ) -> Result<Vec<VkPipeline>> {
+            let mut pipelines = vec![vk_instantiate!(VkPipeline); create_info_count as usize];
+
+            unsafe {
+                vk_assert(vkCreateGraphicsPipelines(
+                    self.self_,
+                    pipeline_cache,
+                    create_info_count,
+                    pipeline_create_infos,
+                    null(),
+                    pipelines.as_mut_ptr(),
+                ));
+            }
+            Ok(pipelines)
+        }
 
         pub fn allocate_descriptor_sets(
             &self,
@@ -932,6 +979,29 @@ pub mod vx {
             Ok(cmd_bufs)
         }
 
+        pub fn free_commands_buffers(
+            &self,
+            command_type: QueueType,
+            command_buffer_count: u32,
+            p_command_buffers: *const VkCommandBuffer,
+        ) {
+            unsafe {
+                vkFreeCommandBuffers(
+                    self.self_,
+                    *self.command_pools.get(&command_type).unwrap(),
+                    command_buffer_count,
+                    p_command_buffers,
+                )
+            }
+        }
+
+        // synchronization functions
+        pub fn wait_idle(&self) {
+            unsafe {
+                vk_assert(vkDeviceWaitIdle(self.self_));
+            }
+        }
+
         pub fn wait_for_fence(
             &self,
             fence_count: u32,
@@ -956,110 +1026,24 @@ pub mod vx {
             }
         }
 
-        pub fn destroy_fence(
-            &self,
-            fence: VkFence,
-            p_allocator: Option<*const VkAllocationCallbacks>,
-        ) {
+        pub fn queue_wait_idle(&self, queue_type: QueueType, index: usize) {
+            let queue = self.get_queue(queue_type, index).unwrap();
             unsafe {
-                if let Some(p) = p_allocator {
-                    vkDestroyFence(self.self_, fence, p);
-                } else {
-                    vkDestroyFence(self.self_, fence, null());
-                }
+                vkQueueWaitIdle(queue);
             }
         }
 
-        pub fn free_commands_buffers(
+        pub fn queue_present_khr(
             &self,
-            command_type: QueueType,
-            command_buffer_count: u32,
-            p_command_buffers: *const VkCommandBuffer,
-        ) {
-            unsafe {
-                vkFreeCommandBuffers(
-                    self.self_,
-                    *self.command_pools.get(&command_type).unwrap(),
-                    command_buffer_count,
-                    p_command_buffers,
-                )
-            }
-        }
+            queue_type: QueueType,
+            index: usize,
+            present_info: &VkPresentInfoKHR,
+        ) -> VkResult {
+            let queue = self.get_queue(queue_type, index).unwrap();
 
-        pub fn create_pipeline_cache(
-            &self,
-            pipeline_cache_create_info: *const VkPipelineCacheCreateInfo,
-        ) -> Result<VkPipelineCache> {
-            let mut pipeline_cache = vk_instantiate!(VkPipelineCache);
-
-            unsafe {
-                vk_assert(vkCreatePipelineCache(
-                    self.self_,
-                    pipeline_cache_create_info,
-                    null(),
-                    &mut pipeline_cache,
-                ));
-            }
-            Ok(pipeline_cache)
-        }
-
-        pub fn create_pipeline_layout(
-            &self,
-            pipeline_layout_create_info: *const VkPipelineLayoutCreateInfo,
-        ) -> Result<VkPipelineLayout> {
-            let mut pipeline_layout = vk_instantiate!(VkPipelineLayout);
-
-            unsafe {
-                vk_assert(vkCreatePipelineLayout(
-                    self.self_,
-                    pipeline_layout_create_info,
-                    null(),
-                    &mut pipeline_layout,
-                ));
-            }
-            Ok(pipeline_layout)
-        }
-
-        pub fn create_compute_pipelines(
-            &self,
-            pipeline_cache: VkPipelineCache,
-            create_info_count: u32,
-            pipeline_create_infos: *const VkComputePipelineCreateInfo,
-        ) -> Result<Vec<VkPipeline>> {
-            let mut pipelines = vec![vk_instantiate!(VkPipeline); create_info_count as usize];
-
-            unsafe {
-                vk_assert(vkCreateComputePipelines(
-                    self.self_,
-                    pipeline_cache,
-                    create_info_count,
-                    pipeline_create_infos,
-                    null(),
-                    pipelines.as_mut_ptr(),
-                ));
-            }
-            Ok(pipelines)
-        }
-
-        pub fn create_graphics_pipelines(
-            &self,
-            pipeline_cache: VkPipelineCache,
-            create_info_count: u32,
-            pipeline_create_infos: *const VkGraphicsPipelineCreateInfo,
-        ) -> Result<Vec<VkPipeline>> {
-            let mut pipelines = vec![vk_instantiate!(VkPipeline); create_info_count as usize];
-
-            unsafe {
-                vk_assert(vkCreateGraphicsPipelines(
-                    self.self_,
-                    pipeline_cache,
-                    create_info_count,
-                    pipeline_create_infos,
-                    null(),
-                    pipelines.as_mut_ptr(),
-                ));
-            }
-            Ok(pipelines)
+            let mut result = VkResult::VK_SUCCESS;
+            unsafe { result = vkQueuePresentKHR(queue, present_info) }
+            result
         }
 
         pub fn get_swapchain_images_khr(&self, swapchain: VkSwapchainKHR) -> Vec<VkImage> {
@@ -1104,19 +1088,6 @@ pub mod vx {
                 ));
             }
             image_index
-        }
-
-        pub fn queue_present_khr(
-            &self,
-            queue_type: QueueType,
-            index: usize,
-            present_info: &VkPresentInfoKHR,
-        ) {
-            let queue = self.get_queue(queue_type, index).unwrap();
-
-            unsafe {
-                vkQueuePresentKHR(queue, present_info);
-            }
         }
 
         //
