@@ -1,6 +1,8 @@
 extern crate winit;
+use paste::paste;
 use vrx::vx::*;
 use vrx::*;
+
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -10,6 +12,7 @@ use winit::{
     window::WindowBuilder,
 };
 
+#[derive(Debug)]
 struct Presentation {
     surface: VkSurfaceKHR,
     swapchain: VkSwapchainKHR,
@@ -25,10 +28,8 @@ impl Presentation {
         let support = SwapchainSupport::new(&surface);
 
         let format = support.get_swapchain_surface_format(
-            // VK_FORMAT_B8G8R8A8_SRGB,
             VK_FORMAT_R8G8B8A8_SRGB,
-            // VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-            VK_COLOR_SPACE_DOLBYVISION_EXT,
+            VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
         );
         let present_mode = support.get_swapchain_present_mode(VK_PRESENT_MODE_MAILBOX_KHR);
         let extent = support.get_swapchain_extent();
@@ -55,14 +56,14 @@ impl Presentation {
     }
 
     fn new_surface(window: &Window) -> VkSurfaceKHR {
-        let CTX = vulkan_context();
+        let ctx = vulkan_context();
 
         let win32_surface_create_info = VkWin32SurfaceCreateInfoKHRBuilder::new()
             .hinstance(window.hinstance() as vrx::HINSTANCE)
             .hwnd(window.hwnd() as vrx::HWND)
             .build();
 
-        CTX.create_win32_surface_khr(&win32_surface_create_info, None)
+        ctx.create_win32_surface_khr(&win32_surface_create_info, None)
     }
 
     fn new_swapchain(
@@ -139,6 +140,11 @@ impl Presentation {
     }
 }
 
+impl Drop for Presentation {
+    fn drop(&mut self) {}
+}
+
+#[derive(Debug)]
 struct GraphicsPipelineProperties {
     shader_stages: Vec<VkPipelineShaderStageCreateInfo>,
     vertex_input_state: VkPipelineVertexInputStateCreateInfo,
@@ -147,10 +153,9 @@ struct GraphicsPipelineProperties {
     rasterization_state: VkPipelineRasterizationStateCreateInfo,
     multisample_state: VkPipelineMultisampleStateCreateInfo,
     color_blend_state: VkPipelineColorBlendStateCreateInfo,
-    // @@todo remove here
-    pipeline_layout: VkPipelineLayout,
-    render_pass: VkRenderPass,
-    graphics_pipeline: VkPipeline,
+    viewports: Vec<VkViewport>,
+    scissors: Vec<VkRect2D>,
+    color_blend_attachments: Vec<VkPipelineColorBlendAttachmentState>,
 }
 
 const VERT_SPV: &[u8] = include_bytes!("./shader/vertex.spv");
@@ -186,7 +191,12 @@ impl GraphicsPipelineProperties {
             .primitive_restart_enable(VK_FALSE)
             .build();
 
-        let viewport = VkViewport {
+        let scissor = VkRect2D {
+            offset: VkOffset2D { x: 0, y: 0 },
+            extent: presentation.extent,
+        };
+
+        let viewports = VkViewport {
             x: 0.0,
             y: 0.0,
             width: presentation.extent.width as f32,
@@ -195,13 +205,8 @@ impl GraphicsPipelineProperties {
             maxDepth: 1.0,
         };
 
-        let scissor = VkRect2D {
-            offset: VkOffset2D { x: 0, y: 0 },
-            extent: presentation.extent,
-        };
-
-        let viewports = &[viewport];
-        let scissors = &[scissor];
+        let viewports = vec![viewports];
+        let scissors = vec![scissor];
         let viewport_state = VkPipelineViewportStateCreateInfoBuilder::new()
             .viewport_count(viewports.len() as u32)
             .p_viewports(viewports.as_ptr())
@@ -235,26 +240,62 @@ impl GraphicsPipelineProperties {
             .alpha_blend_op(VK_BLEND_OP_ADD)
             .build();
 
-        let attachments = &[color_blend_attachment_state];
+        let color_blend_attachments = vec![color_blend_attachment_state];
         let color_blend_state = VkPipelineColorBlendStateCreateInfoBuilder::new()
             .logic_op_enable(VK_FALSE)
             .logic_op(VK_LOGIC_OP_COPY)
-            .attachment_count(attachments.len() as u32)
-            .p_attachments(attachments.as_ptr())
-            .blend_constants([0.0, 0.0, 0.0, 0.0])
+            .attachment_count(color_blend_attachments.len() as u32)
+            .p_attachments(color_blend_attachments.as_ptr())
+            .blend_constants([0.0, 0.0, 0.0, 1.0])
             .build();
 
-        // let dynamic_states = &[VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH];
-        // let dynamic_state = VkPipelineDynamicStateCreateInfoBuilder::new()
-        //     .dynamic_state_count(dynamic_states.len() as u32)
-        //     .p_dynamic_states(dynamic_states.as_ptr())
-        //     .build();
+        Self {
+            shader_stages,
+            vertex_input_state,
+            input_assembly_state,
+            viewport_state,
+            rasterization_state,
+            multisample_state,
+            color_blend_state,
+            viewports,
+            scissors,
+            color_blend_attachments,
+        }
+    }
+}
 
-        let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new().build();
-        let pipeline_layout = device
-            .create_pipeline_layout(&pipeline_layout_create_info)
-            .unwrap();
+struct GraphicsPipeline {
+    render_pass: VkRenderPass,
+    pipeline_layout: VkPipelineLayout,
+    pipeline: VkPipeline,
+}
 
+impl GraphicsPipeline {
+    fn new(
+        device: &vx::Device,
+        presentation: &Presentation,
+        properties: &GraphicsPipelineProperties,
+    ) -> Self {
+        let mut instance = Self::null();
+
+        // real create
+        instance.create_render_pass(device, presentation);
+        instance.create_pipeline_layout(device);
+        instance.create_pipeline(device, properties);
+
+        instance
+    }
+
+    fn null() -> Self {
+        Self {
+            render_pass: vk_instantiate!(VkRenderPass),
+            pipeline_layout: vk_instantiate!(VkPipelineLayout),
+            pipeline: vk_instantiate!(VkPipeline),
+        }
+    }
+
+    fn create_render_pass(&mut self, device: &vx::Device, presentation: &Presentation) {
+        // render pass
         // attachments
         let color_attachment_description = VkAttachmentDescriptionBuilder::new()
             .format(presentation.format.format)
@@ -293,52 +334,49 @@ impl GraphicsPipelineProperties {
         let subpasses = &[subpass];
         let dependencies = &[dependency];
         let render_pass_create_info = VkRenderPassCreateInfoBuilder::new()
-            .attachment_count(1)
-            .p_attachments(&color_attachment_description)
-            .subpass_count(1)
-            .p_subpasses(&subpass)
-            .dependency_count(1)
-            .p_dependencies(&dependency)
+            .attachment_count(attachments.len() as u32)
+            .p_attachments(attachments.as_ptr())
+            .subpass_count(subpasses.len() as u32)
+            .p_subpasses(subpasses.as_ptr())
+            .dependency_count(dependencies.len() as u32)
+            .p_dependencies(dependencies.as_ptr())
             .build();
 
-        let render_pass = device
+        self.render_pass = device
             .create_render_pass(&render_pass_create_info, None)
             .unwrap();
+    }
 
+    fn create_pipeline_layout(&mut self, device: &vx::Device) {
+        let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new().build();
+        self.pipeline_layout = device
+            .create_pipeline_layout(&pipeline_layout_create_info, None)
+            .unwrap();
+    }
+
+    fn create_pipeline(&mut self, device: &vx::Device, properties: &GraphicsPipelineProperties) {
         let pipeline_create_info = VkGraphicsPipelineCreateInfoBuilder::new()
-            .stage_count(shader_stages.len() as u32)
-            .p_stages(shader_stages.as_ptr())
-            .p_vertex_input_state(&vertex_input_state)
-            .p_input_assembly_state(&input_assembly_state)
-            .p_viewport_state(&viewport_state)
-            .p_rasterization_state(&rasterization_state)
-            .p_multisample_state(&multisample_state)
-            .p_color_blend_state(&color_blend_state)
-            .layout(pipeline_layout)
-            .render_pass(render_pass)
+            .stage_count(properties.shader_stages.len() as u32)
+            .p_stages(properties.shader_stages.as_ptr())
+            .p_vertex_input_state(&properties.vertex_input_state)
+            .p_input_assembly_state(&properties.input_assembly_state)
+            .p_viewport_state(&properties.viewport_state)
+            .p_rasterization_state(&properties.rasterization_state)
+            .p_multisample_state(&properties.multisample_state)
+            .p_color_blend_state(&properties.color_blend_state)
+            .layout(self.pipeline_layout)
+            .render_pass(self.render_pass)
             .subpass(0)
             .build();
 
         let pipeline_cache_create_info = VkPipelineCacheCreateInfoBuilder::new().build();
         let pipeline_cache = device
-            .create_pipeline_cache(&pipeline_cache_create_info)
+            .create_pipeline_cache(&pipeline_cache_create_info, None)
             .unwrap();
-        let graphics_pipeline = device
+
+        self.pipeline = device
             .create_graphics_pipelines(pipeline_cache, 1, &pipeline_create_info)
             .unwrap()[0];
-
-        Self {
-            shader_stages,
-            vertex_input_state,
-            input_assembly_state,
-            viewport_state,
-            rasterization_state,
-            multisample_state,
-            color_blend_state,
-            pipeline_layout,
-            render_pass,
-            graphics_pipeline,
-        }
     }
 }
 
@@ -346,8 +384,25 @@ struct App {
     device: vx::Device,
     presentation: Presentation,
     graphics_pipeline_properties: GraphicsPipelineProperties,
+    graphics_pipeline: GraphicsPipeline,
     framebuffers: Vec<VkFramebuffer>,
     command_buffers: Vec<VkCommandBuffer>,
+    image_available_semaphores: Vec<VkSemaphore>,
+    render_finished_semaphores: Vec<VkSemaphore>,
+    in_flight_fences: Vec<VkFence>,
+    images_in_flight: Vec<VkFence>,
+    frame: usize,
+    resized: bool,
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        // presentation.drop();
+
+        self.framebuffers
+            .iter()
+            .for_each(|buf| self.device.destroy_framebuffer(*buf, None));
+    }
 }
 
 impl App {
@@ -355,103 +410,63 @@ impl App {
         let device = vx::Device::new(&[(vx::QueueType::graphics, 1)]);
         let presentation = Presentation::new(&device, window);
         let graphics_pipeline_properties = GraphicsPipelineProperties::new(&device, &presentation);
+        let graphics_pipeline =
+            GraphicsPipeline::new(&device, &presentation, &graphics_pipeline_properties);
 
-        // let queue_family_indices = device.queue_family_indices.get(&QueueType::graphics).unwrap();
-        // let ctx = vulkan_context();
-        // let pos = ctx.get_physical_device_surface_support_khr(
-        //     queue_family_indices[0],
-        //     presentation.surface,
-        // );
-        // println!("present {:?}, {:?}", pos, queue_family_indices[0]);
+        let mut app = Self {
+            device: device,
+            presentation: presentation,
+            graphics_pipeline_properties: graphics_pipeline_properties,
+            graphics_pipeline: graphics_pipeline,
+            framebuffers: vec![],
+            command_buffers: vec![],
+            image_available_semaphores: vec![],
+            render_finished_semaphores: vec![],
+            in_flight_fences: vec![],
+            images_in_flight: vec![],
+            frame: 0,
+            resized: false,
+        };
 
-        let framebuffers: Vec<VkFramebuffer> = presentation
-            .image_views
-            .iter()
-            .map(|image| {
-                let framebuffer_create_info = VkFramebufferCreateInfoBuilder::new()
-                    .render_pass(graphics_pipeline_properties.render_pass)
-                    .attachment_count(1)
-                    .p_attachments(image)
-                    .width(presentation.extent.width)
-                    .height(presentation.extent.height)
-                    .layers(1)
-                    .build();
-                device
-                    .create_framebuffer(&framebuffer_create_info, None)
-                    .unwrap()
-            })
-            .collect();
+        app.create_framebuffers();
+        app.create_command_buffers();
+        app.create_sync_objects();
 
-        let command_buffers = device
-            .allocate_command_buffers(
-                QueueType::graphics,
-                VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                framebuffers.len() as u32,
-            )
-            .unwrap();
-
-        command_buffers.iter().enumerate().for_each(|(i, cmd)| {
-            vkCmdBlock! {
-                THIS *cmd;
-
-                let render_area = VkRect2D { offset: VkOffset2D { x: 0, y: 0 }, extent: presentation.extent };
-                let color_clear_value = VkClearValue { color: VkClearColorValue { float32:[0.0, 0.0, 1.0, 0.0] } };
-                let clear_values = &[color_clear_value];
-
-                let render_pass_begin_info = VkRenderPassBeginInfoBuilder::new()
-                    .render_pass(graphics_pipeline_properties.render_pass)
-                    .render_area(render_area)
-                    .clear_value_count(clear_values.len() as u32)
-                    .p_clear_values(clear_values.as_ptr())
-                    .framebuffer(framebuffers[i])
-                    .build();
-
-                BEGIN_RENDER_PASS(&render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-                BIND_PIPELINE(
-                    VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_properties.graphics_pipeline
-                );
-                DRAW(3, 1, 0, 0);
-                END_RENDER_PASS();
-            };
-        });
-
-        Self {
-            device,
-            presentation,
-            graphics_pipeline_properties,
-            framebuffers,
-            command_buffers,
-        }
+        app
     }
 
-    fn render(&self) {
-        // render part
-        let semaphore_create_info = VkSemaphoreCreateInfoBuilder::new().build();
-        let wait_semaphores = self
-            .device
-            .create_semaphore(&semaphore_create_info, None)
-            .unwrap();
-        let signal_semaphores = self
-            .device
-            .create_semaphore(&semaphore_create_info, None)
-            .unwrap();
-        let wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT as u32;
+    pub fn render(&mut self, window: &Window) {
+        // syn cpu gpu
+        // self.device.wait_for_fence(
+        //     self.in_flight_fences.len() as u32,
+        //     self.in_flight_fences.as_ptr(),
+        //     true,
+        //     u64::MAX,
+        // );
+        // self.device.reset_fence(
+        //     self.in_flight_fences.len() as u32,
+        //     self.in_flight_fences.as_ptr(),
+        // );
 
+        let wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT as u32;
         let image_index = self.device.acquire_next_image_khr(
             self.presentation.swapchain,
             u64::MAX,
-            wait_semaphores,
+            self.image_available_semaphores[self.frame],
             std::ptr::null_mut(),
         );
+
+        let wait_semaphores = &[self.image_available_semaphores[self.frame]];
+        let signal_semaphores = &[self.image_available_semaphores[self.frame]];
         let command_buffer = self.command_buffers[image_index as usize];
         let submit_info = VkSubmitInfoBuilder::new()
-            .wait_semaphore_count(1)
-            .p_wait_semaphores(&wait_semaphores)
+            .wait_semaphore_count(wait_semaphores.len() as u32)
+            .p_wait_semaphores(wait_semaphores.as_ptr())
             .p_wait_dst_stage_mask(&wait_dst_stage_mask)
             .command_buffer_count(1)
             .p_command_buffers(&command_buffer)
-            .signal_semaphore_count(1)
-            .p_signal_semaphores(&signal_semaphores)
+            .signal_semaphore_count(signal_semaphores.len() as u32)
+            .p_signal_semaphores(signal_semaphores.as_ptr())
             .build();
 
         self.device.queue_submit(
@@ -462,16 +477,129 @@ impl App {
             std::ptr::null_mut(),
         );
 
+        // presenting queue
         let present_info = VkPresentInfoKHRBuilder::new()
-            .wait_semaphore_count(1)
-            .p_wait_semaphores(&signal_semaphores)
+            .wait_semaphore_count(signal_semaphores.len() as u32)
+            .p_wait_semaphores(signal_semaphores.as_ptr())
             .swapchain_count(1)
             .p_swapchains(&self.presentation.swapchain)
             .p_image_indices(&image_index)
             .build();
-
-        self.device
+        let result = self
+            .device
             .queue_present_khr(QueueType::graphics, 0, &present_info);
+
+        let changed = result == VkResult::VK_SUBOPTIMAL_KHR
+            || result == VkResult::VK_ERROR_OUT_OF_DATE_KHR;
+
+        // if self.resized || changed {
+        //     self.recreate_presentation(window);
+        // } else {
+        // }
+
+        // synchronization
+        self.device.queue_wait_idle(QueueType::graphics, 0);
+        self.frame = (self.frame + 1) % 2;
+    }
+
+    fn create_framebuffers(&mut self) {
+        self.framebuffers = self
+            .presentation
+            .image_views
+            .iter()
+            .map(|image| {
+                let framebuffer_create_info = VkFramebufferCreateInfoBuilder::new()
+                    .render_pass(self.graphics_pipeline.render_pass)
+                    .attachment_count(1)
+                    .p_attachments(image)
+                    .width(self.presentation.extent.width)
+                    .height(self.presentation.extent.height)
+                    .layers(1)
+                    .build();
+                self.device
+                    .create_framebuffer(&framebuffer_create_info, None)
+                    .unwrap()
+            })
+            .collect();
+    }
+
+    fn create_command_buffers(&mut self) {
+        self.command_buffers = self
+            .device
+            .allocate_command_buffers(
+                QueueType::graphics,
+                VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                self.framebuffers.len() as u32,
+            )
+            .unwrap();
+
+        self.command_buffers.iter().enumerate().for_each(|(i, cmd)| {
+            vkCmdBlock! {
+                THIS *cmd;
+
+                let render_area = VkRect2D { offset: VkOffset2D { x: 0, y: 0 }, extent: self.presentation.extent };
+                let color_clear_value = VkClearValue { color: VkClearColorValue { float32:[0.0, 0.0, 1.0, 0.0] } };
+                let clear_values = &[color_clear_value];
+
+                let render_pass_begin_info = VkRenderPassBeginInfoBuilder::new()
+                    .render_pass(self.graphics_pipeline.render_pass)
+                    .render_area(render_area)
+                    .clear_value_count(clear_values.len() as u32)
+                    .p_clear_values(clear_values.as_ptr())
+                    .framebuffer(self.framebuffers[i])
+                    .build();
+
+                BEGIN_RENDER_PASS(&render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+                BIND_PIPELINE(
+                    VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline
+                );
+                DRAW(3, 1, 0, 0);
+                END_RENDER_PASS();
+            };
+        });
+    }
+
+    fn create_sync_objects(&mut self) {
+        let semaphore_create_info = VkSemaphoreCreateInfoBuilder::new().build();
+        let fence_create_info = VkFenceCreateInfoBuilder::new()
+            .flags(VK_FENCE_CREATE_SIGNALED_BIT as u32)
+            .build();
+        self.image_available_semaphores = vec![];
+        self.render_finished_semaphores = vec![];
+        self.in_flight_fences = vec![];
+        for _ in 0..2 {
+            self.image_available_semaphores.push(
+                self.device
+                    .create_semaphore(&semaphore_create_info, None)
+                    .unwrap(),
+            );
+            self.render_finished_semaphores.push(
+                self.device
+                    .create_semaphore(&semaphore_create_info, None)
+                    .unwrap(),
+            );
+            self.in_flight_fences
+                .push(self.device.create_fence(&fence_create_info, None).unwrap());
+        }
+    }
+
+    fn recreate_presentation(&mut self, window: &Window) {
+        self.device.wait_idle();
+        self.presentation = Presentation::new(&self.device, window);
+        self.graphics_pipeline_properties =
+            GraphicsPipelineProperties::new(&self.device, &self.presentation);
+        self.graphics_pipeline = GraphicsPipeline::new(
+            &self.device,
+            &self.presentation,
+            &self.graphics_pipeline_properties,
+        );
+
+        self.create_framebuffers();
+        self.create_command_buffers();
+        self.create_sync_objects();
+
+        self.images_in_flight
+            .resize(self.presentation.images.len(), vk_instantiate!(VkFence));
     }
 }
 
@@ -485,15 +613,25 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let app = App::new(&window);
-    app.render();
+    let mut app = App::new(&window);
     // return;
     let mut destroying = false;
+    let mut minimized = false;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
         match event {
             // Render a frame if our Vulkan app is not being destroyed.
-            Event::MainEventsCleared if !destroying => unsafe { app.render() },
+            Event::MainEventsCleared if !destroying => unsafe { app.render(&window) },
+            // resize
+            Event::WindowEvent { event: WindowEvent::Resized(size), .. } => {
+                if size.width == 0 || size.height == 0 {
+                    minimized = true;
+                } else {
+                    minimized = false;
+                    app.resized = true;
+                }
+            }
+            
             // Destroy our Vulkan app.
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
