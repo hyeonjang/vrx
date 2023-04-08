@@ -83,6 +83,27 @@ macro_rules! impl_create_function {
     };
 }
 
+macro_rules! impl_destroy_function {
+    ($subject:expr, $name:expr $(, $khr:expr)?) => {
+        paste! {
+            pub fn [<destroy_ $name:snake>](
+                &self,
+                [<$name:snake>]: [<Vk $name $($khr)?>],
+                p_allocator: Option<*const VkAllocationCallbacks>,
+            ) {
+
+                unsafe {
+                    if let Some(p) = p_allocator {
+                        [<vkDestroy $name $($khr)?>](self.$subject, [<$name:snake>], p_allocator.unwrap());
+                    } else {
+                        [<vkDestroy $name $($khr)?>](self.$subject, [<$name:snake>], null());
+                    }
+                }
+            }
+        }
+    };
+}
+
 macro_rules! impl_builder_for_vk_structure_t {
     ( pub struct $type_:ty { $(pub $field:ident: $field_type:ty $(,)?)* } ) => {
 
