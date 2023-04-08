@@ -279,7 +279,7 @@ where
             .initial_data_size(0)
             .build();
         let pipeline_cache = device
-            .create_pipeline_cache(&pipeline_cache_create_info)
+            .create_pipeline_cache(&pipeline_cache_create_info, None)
             .unwrap();
 
         let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
@@ -291,7 +291,7 @@ where
             .build();
 
         let pipeline_layout = device
-            .create_pipeline_layout(&pipeline_layout_create_info)
+            .create_pipeline_layout(&pipeline_layout_create_info, None)
             .unwrap();
 
         let pipeline_stage_create_info = VkPipelineShaderStageCreateInfoBuilder::new()
