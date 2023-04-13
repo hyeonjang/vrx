@@ -1106,19 +1106,26 @@ pub mod vx {
             timeout: u64,
             semaphore: VkSemaphore,
             fence: VkFence,
-        ) -> u32 {
+        ) -> Result<u32, VkResult> {
             let mut image_index = 0;
+            let mut result = VkResult::VK_SUCCESS;
             unsafe {
-                vk_assert(vkAcquireNextImageKHR(
+                result = vkAcquireNextImageKHR(
                     self.self_,
                     swapchain,
                     timeout,
                     semaphore,
                     fence,
                     &mut image_index,
-                ));
+                );
             }
-            image_index
+
+            let x: Result<u32, VkResult>;
+            match result {
+                VkResult::VK_SUCCESS => x = Result::Ok(image_index),
+                _ => x = Err(result),
+            }
+            x
         }
 
         //
@@ -1145,12 +1152,12 @@ pub mod vx {
             ))
         }
 
-        pub fn create_vximage<'a>(
+        pub fn create_texture<'a>(
             &'a self,
             image_create_info: VkImageCreateInfo,
             mem_prop_info: VkMemoryPropertyFlagBits,
-        ) -> Result<VxImage> {
-            Ok(VxImage::new(image_create_info, mem_prop_info, &self.self_))
+        ) -> Result<Texture> {
+            Ok(Texture::new(image_create_info, mem_prop_info, &self.self_))
         }
     }
 
@@ -1405,7 +1412,7 @@ pub mod vx {
         }
     }
 
-    pub struct VxImage<'a> {
+    pub struct Texture<'a> {
         device: &'a VkDevice,
 
         image: VkImage,
@@ -1414,7 +1421,7 @@ pub mod vx {
         info: VkImageCreateInfo,
     }
 
-    impl<'a> Memory for VxImage<'a> {
+    impl<'a> Memory for Texture<'a> {
         fn device(&self) -> &VkDevice {
             self.device
         }
@@ -1464,7 +1471,7 @@ pub mod vx {
         }
     }
 
-    impl<'a> VxImage<'a> {
+    impl<'a> Texture<'a> {
         pub fn new(
             info: VkImageCreateInfo,
             mem_prop_flags: VkMemoryPropertyFlagBits,

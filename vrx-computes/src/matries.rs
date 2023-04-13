@@ -112,7 +112,7 @@ where
             .build();
 
         let out_image = device
-            .create_vximage(image_create_info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+            .create_texture(image_create_info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
             .unwrap();
 
         // let cmd = device
