@@ -8,23 +8,25 @@ use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::windows::WindowExtWindows,
     platform::run_return::EventLoopExtRunReturn,
+    platform::windows::WindowExtWindows,
     window::Window,
     window::WindowBuilder,
 };
 
 #[derive(Debug)]
-struct Presentation {
+struct Presentation<'a> {
     surface: VkSurfaceKHR,
     swapchain: VkSwapchainKHR,
     images: Vec<VkImage>,
     image_views: Vec<VkImageView>,
     format: VkSurfaceFormatKHR,
     extent: VkExtent2D,
+
+    device: Option<&'a vx::Device>,
 }
 
-impl Default for Presentation {
+impl<'a> Default for Presentation<'a> {
     fn default() -> Self {
         Self {
             surface: vk_instantiate!(VkSurfaceKHR),
@@ -33,12 +35,13 @@ impl Default for Presentation {
             image_views: vec![],
             format: VkSurfaceFormatKHR::default(),
             extent: VkExtent2D::default(),
+            device: None,
         }
     }
 }
 
-impl Presentation {
-    fn new(device: &vx::Device, window: &Window) -> Self {
+impl<'a> Presentation<'a> {
+    fn new(device: &'a vx::Device, window: &Window) -> Self {
         let surface = Self::new_surface(&window);
         let support = SwapchainSupport::new(&surface);
 
@@ -60,6 +63,7 @@ impl Presentation {
         let images = device.get_swapchain_images_khr(swapchain);
         let image_views = Self::new_image_views(device, &images, format);
 
+        let device = Some(device);
         Self {
             surface,
             swapchain,
@@ -67,6 +71,7 @@ impl Presentation {
             image_views,
             format,
             extent,
+            device,
         }
     }
 
@@ -154,11 +159,16 @@ impl Presentation {
         image_views
     }
 
-    pub fn destroy(&mut self, device: &vx::Device) {
+    pub fn destroy(&mut self) {
+        // self.images
+        //     .iter()
+        //     .for_each(|i| self.device.unwrap().destroy_image(*i, None));
+
         self.image_views
             .iter()
-            .for_each(move |iv| device.destroy_image_view(*iv, None));
-        device.destroy_swapchain(self.swapchain, None);
+            .for_each(|iv| self.device.unwrap().destroy_image_view(*iv, None));
+
+        self.device.unwrap().destroy_swapchain(self.swapchain, None);
     }
 }
 
@@ -204,6 +214,12 @@ impl<'a> ShaderModules<'a> {
 
         shader_modules.create_shader_stage_create_info();
         shader_modules
+    }
+
+    fn destroy(&mut self) {
+        self.shader_modules
+            .iter()
+            .for_each(|m| self.device.unwrap().destroy_shader_module(*m, None));
     }
 
     fn create_shader_stage_create_info(&mut self) {
@@ -391,10 +407,14 @@ impl<'a> GraphicsPipeline<'a> {
         self.device = Some(device);
     }
 
-    pub fn destroy(&mut self, device: &vx::Device) {
-        device.destroy_pipeline(self.pipeline, None);
-        device.destroy_pipeline_layout(self.pipeline_layout, None);
-        device.destroy_render_pass(self.render_pass, None);
+    pub fn destroy(&mut self) {
+        self.device.unwrap().destroy_pipeline(self.pipeline, None);
+        self.device
+            .unwrap()
+            .destroy_pipeline_layout(self.pipeline_layout, None);
+        self.device
+            .unwrap()
+            .destroy_render_pass(self.render_pass, None);
     }
 
     fn create_render_pass(&mut self, presentation: &Presentation) {
@@ -496,8 +516,7 @@ impl<'a> GraphicsPipeline<'a> {
 }
 
 struct App<'a> {
-    device: &'a vx::Device,
-    presentation: Presentation,
+    presentation: Presentation<'a>,
     shader_stages: ShaderModules<'a>,
     graphics_pipeline_properties: GraphicsPipelineProperties,
     graphics_pipeline: GraphicsPipeline<'a>,
@@ -509,6 +528,7 @@ struct App<'a> {
     images_in_flight: Vec<VkFence>,
     frame: usize,
     resized: bool,
+    device: &'a vx::Device,
 }
 
 // impl Drop for App {
@@ -560,7 +580,7 @@ impl<'a> App<'a> {
         app
     }
 
-    pub fn render(&mut self, window: &Window) {
+    pub fn render(&mut self, window: &Window) -> Result<()> {
         // syn cpu gpu
 
         let in_flight_fence = self.in_flight_fences[self.frame];
@@ -568,21 +588,18 @@ impl<'a> App<'a> {
         self.device
             .wait_for_fence(1, &in_flight_fence, true, u64::MAX);
 
-        let image_index = self
-            .device
-            .acquire_next_image_khr(
-                self.presentation.swapchain,
-                u64::MAX,
-                self.image_available_semaphores[self.frame],
-                std::ptr::null_mut(),
-            )
-            .unwrap();
+        let result = self.device.acquire_next_image_khr(
+            self.presentation.swapchain,
+            u64::MAX,
+            self.image_available_semaphores[self.frame],
+            std::ptr::null_mut(),
+        );
 
-        // let image_index = match result {
-        //     Ok(image_index) => image_index,
-        //     // Err(VkResult::VK_ERROR_OUT_OF_DATE_KHR) => return self.recreate_presentation(window),
-        //     // Err(e) => return Err(anyhow!("{:?}", e)),
-        // };
+        let image_index = match result {
+            Ok(image_index) => image_index,
+            Err(VkResult::VK_ERROR_OUT_OF_DATE_KHR) => return self.recreate_presentation(window),
+            Err(e) => return Err(anyhow!("{:?}", e)),
+        };
 
         let image_in_flight = self.images_in_flight[image_index as usize];
         // println!("{:?}, {:?}", self.frame, self.images_in_flight[image_index as usize]);
@@ -637,28 +654,14 @@ impl<'a> App<'a> {
         if changed {
             self.recreate_presentation(window);
         } else {
-            // return Ok(());
+            return Ok(());
         }
 
         // synchronization
         self.frame = (self.frame + 1) % 2;
 
-        // Ok(())
+        Ok(())
     }
-
-    fn create_presentation(&mut self, window: &Window) {
-        self.presentation = Presentation::new(&self.device, window);
-    }
-
-    fn create_shader_modules(
-        &mut self,
-        shader_bytes: &[&[u8]],
-        shader_stages: &[VkShaderStageFlagBits],
-    ) {
-        self.shader_stages = ShaderModules::new(&self.device, shader_bytes, shader_stages)
-    }
-    fn create_graphics_pipeline_properties() {}
-    fn create_graphics_pipeline() {}
 
     fn create_framebuffers(&mut self) {
         self.framebuffers = self
@@ -750,23 +753,25 @@ impl<'a> App<'a> {
 
     fn recreate_presentation(&mut self, window: &Window) -> Result<()> {
         self.device.wait_idle();
-        self.presentation.destroy(&self.device);
+        self.presentation.destroy();
+        self.graphics_pipeline.destroy();
 
-        // self.presentation = Presentation::new(&self.device, window);
-        // self.graphics_pipeline_properties =
-        //     GraphicsPipelineProperties::new(&self.device, &self.presentation);
-        // self.graphics_pipeline = GraphicsPipeline::new(
-        //     &self.device,
-        //     &self.presentation,
-        //     &self.graphics_pipeline_properties,
-        // );
+        self.presentation = Presentation::new(&self.device, window);
+        self.graphics_pipeline_properties =
+        GraphicsPipelineProperties::new(&self.device, &self.presentation);
+        self.graphics_pipeline = GraphicsPipeline::new(
+            &self.device,
+            &self.presentation,
+            &self.shader_stages,
+            &self.graphics_pipeline_properties,
+        );
 
-        // self.create_framebuffers();
-        // self.create_command_buffers();
-        // self.create_sync_objects();
+        self.create_framebuffers();
+        self.create_command_buffers();
+        self.create_sync_objects();
 
-        // self.images_in_flight
-        //     .resize(self.presentation.images.len(), std::ptr::null_mut());
+        self.images_in_flight
+            .resize(self.presentation.images.len(), std::ptr::null_mut());
 
         Ok(())
     }
@@ -793,8 +798,9 @@ impl<'a> App<'a> {
     pub fn destroy(&mut self) {
         self.device.wait_idle();
 
-        self.presentation.destroy(&self.device);
-        self.graphics_pipeline.destroy(&self.device);
+        self.presentation.destroy();
+        self.shader_stages.destroy();
+        self.graphics_pipeline.destroy();
         // self.destroy_sync_objects();
         // self.device.destroy();
     }
@@ -821,9 +827,7 @@ fn main() {
         control_flow.set_poll();
         match event {
             // Render a frame if our Vulkan app is not being destroyed.
-            Event::MainEventsCleared => {
-                app.render(&window)
-            },
+            Event::MainEventsCleared => { app.render(&window) }.unwrap(),
             // resize
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
