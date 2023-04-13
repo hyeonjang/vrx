@@ -688,13 +688,9 @@ pub mod vx {
             };
 
             // 2. initialize queue family index
-            // for demand in demands {
-            //     queue_family_indices.insert(demand.0, vec![]);
-            // }
             demands.iter().for_each(|demand| {
                 queue_family_indices.insert(demand.0, vec![]);
             });
-
 
             // 3. resource (indices) allocation
             let mut tot_indices: Vec<u32> = vec![0, 1, 2, 3, 4, 5];
@@ -723,9 +719,9 @@ pub mod vx {
 
             // 3. real execute
             let queue_priority = 0.9;
-            demands.iter().for_each(|demand| {
-                process_queue_family(demand.0, demand.1, queue_priority)
-            });
+            demands
+                .iter()
+                .for_each(|demand| process_queue_family(demand.0, demand.1, queue_priority));
 
             // device
             let vk_khr_swapchain = b"VK_KHR_swapchain\0".as_ptr() as *const i8;
@@ -764,9 +760,9 @@ pub mod vx {
                 .queue_family_indices
                 .iter()
                 .map(|(queue_type, indices)| {
-                let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
+                    let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
                         .queue_family_index(indices[0])
-                    .build();
+                        .build();
                     let command_pool = self
                         .create_command_pool(&command_pool_create_info, None)
                         .unwrap();
@@ -778,7 +774,7 @@ pub mod vx {
             command_pools.iter().for_each(move |(queue_type, pool)| {
                 self.command_pools.insert(*queue_type, *pool);
             });
-            }
+        }
 
         pub fn destroy(&mut self) {
             unsafe {
@@ -880,6 +876,7 @@ pub mod vx {
         impl_destroy_function!(self_, PipelineCache);
         impl_destroy_function!(self_, PipelineLayout);
         impl_destroy_function!(self_, Pipeline);
+        impl_destroy_function!(self_, ShaderModule);
 
         pub fn create_compute_pipelines(
             &self,
