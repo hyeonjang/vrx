@@ -4,7 +4,6 @@ use std::ffi::CString;
 use std::ops::Index;
 use std::ptr::null;
 
-use vrx::vx::*;
 use vrx::*;
 
 #[derive(Debug, Clone, Copy)]
@@ -69,8 +68,8 @@ where
     T: std::fmt::Debug + std::marker::Copy + Default,
 {
     fn cholesky(&self) {
-        let device = vx::Device::new(&[(vx::QueueType::computes, 1)]);
-        println!("{:?}", device.queue_family_indices);
+        let handler = VulkanResourceHandler::new(&[(QueueType::computes, 1)]);
+        let device = &handler.device;
 
         let input_constant = PushConstant::new(
             VK_SHADER_STAGE_COMPUTE_BIT,
@@ -81,7 +80,7 @@ where
         let mut out_values = [[T::default(); R]; C];
         let shape = (out_values.len() as u32, out_values[0].len() as u32);
         let len = shape.0 * shape.1;
-        let mut out_buffer = device
+        let mut out_buffer = handler
             .create_vxbuffer(
                 &mut out_values[0][0],
                 len as u32,
@@ -111,7 +110,7 @@ where
             .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
             .build();
 
-        let out_image = device
+        let out_image = handler
             .create_texture(image_create_info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
             .unwrap();
 
@@ -170,7 +169,7 @@ where
 
         let sampler_create_info = VkSamplerCreateInfoBuilder::new().build();
 
-        let sampler = device.create_sampler(&sampler_create_info, None).unwrap();
+        let sampler = device.create_sampler(&sampler_create_info, None);
 
         let image_view_create_info = VkImageViewCreateInfoBuilder::new()
             .image(*out_image.image())
@@ -186,8 +185,7 @@ where
             .build();
 
         let image_view = device
-            .create_image_view(&image_view_create_info, None)
-            .unwrap();
+            .create_image_view(&image_view_create_info, None);
 
         let image_descriptor = VkDescriptorImageInfo {
             sampler: sampler,
@@ -230,8 +228,7 @@ where
             .build();
 
         let descriptor_pool = device
-            .create_descriptor_pool(&descriptor_pool_create_info, None)
-            .unwrap();
+            .create_descriptor_pool(&descriptor_pool_create_info, None);
 
         let descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfoBuilder::new()
             .binding_count(layout_bindings.len() as u32)
@@ -239,8 +236,7 @@ where
             .build();
 
         let descriptor_set_layout = device
-            .create_descriptor_set_layout(&descriptor_set_layout_create_info, None)
-            .unwrap();
+            .create_descriptor_set_layout(&descriptor_set_layout_create_info, None);
 
         let descriptor_set_alloc_info = VkDescriptorSetAllocateInfoBuilder::new()
             .descriptor_pool(descriptor_pool)
@@ -248,7 +244,7 @@ where
             .p_set_layouts(&descriptor_set_layout)
             .build();
 
-        let descriptor_sets = device
+        let descriptor_sets = handler
             .allocate_descriptor_sets(&descriptor_set_alloc_info)
             .unwrap();
 
@@ -267,7 +263,7 @@ where
             //     .pImageInfo(&image_descriptor)
             //     .build(),
         ];
-        device.update_descriptor_sets(write_desc_sets.len(), write_desc_sets.as_ptr());
+        handler.update_descriptor_sets(write_desc_sets.len(), write_desc_sets.as_ptr());
 
         // compute pipeline
         let name = CString::new("main").unwrap();
@@ -279,8 +275,7 @@ where
             .initial_data_size(0)
             .build();
         let pipeline_cache = device
-            .create_pipeline_cache(&pipeline_cache_create_info, None)
-            .unwrap();
+            .create_pipeline_cache(&pipeline_cache_create_info, None);
 
         let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
             .flags(0)
@@ -291,12 +286,11 @@ where
             .build();
 
         let pipeline_layout = device
-            .create_pipeline_layout(&pipeline_layout_create_info, None)
-            .unwrap();
+            .create_pipeline_layout(&pipeline_layout_create_info, None);
 
         let pipeline_stage_create_info = VkPipelineShaderStageCreateInfoBuilder::new()
             .stage(VK_SHADER_STAGE_COMPUTE_BIT)
-            .module(device.create_shader_module(COMP_SPV).unwrap())
+            .module(device.create_shader_module(COMP_SPV, None))
             .p_name(ref_name.as_ptr() as *const i8)
             .p_specialization_info(&spec_info)
             .build();
@@ -308,14 +302,13 @@ where
             .base_pipeline_index(0)
             .build();
         let pipelines = device
-            .create_compute_pipelines(pipeline_cache, 1, &compute_pipeline_create_info)
-            .unwrap();
+            .create_compute_pipelines(pipeline_cache, &[compute_pipeline_create_info], None);
         let pipeline = pipelines[0];
 
         //
         // pipepline submit commands
-        let cmd = device
-            .allocate_command_buffer(vx::QueueType::computes, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+        let cmd = handler
+            .allocate_command_buffer(QueueType::computes, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
             .unwrap();
         vkCmdBlock! {
             THIS cmd;
@@ -363,8 +356,8 @@ where
         let fence_create_info = VkFenceCreateInfoBuilder::new()
             .flags(VK_FENCE_CREATE_SIGNALED_BIT.try_into().unwrap())
             .build();
-        let fence1 = device.create_fence(&fence_create_info, None).unwrap();
-        device.reset_fence(1, &fence1);
+        let fence1 = device.create_fence(&fence_create_info, None);
+        device.reset_fence(&[fence1]);
 
         let wait_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT as u32;
         let submit_info = VkSubmitInfoBuilder::new()
@@ -373,18 +366,20 @@ where
             .p_command_buffers(&cmd)
             .build();
 
-        device.queue_submit(vx::QueueType::computes, 0, 1, &submit_info, fence1);
-        device.wait_for_fence(1, &fence1, false, u64::MAX);
+        let queue_family_index = handler.queue_family_indices.get(&QueueType::computes).unwrap()[0];
+        let queue = device.get_queue(queue_family_index, 0);
+        queue.queue_submit(0, 1, &submit_info, fence1);
+        device.wait_for_fence(&[fence1], false, u64::MAX);
 
-        // let new_mapped = out_buffer
-        //     .map_memory(0, VK_WHOLE_SIZE as u64, 0)
-        //     .unwrap();
-        // let mapped_ranges = VkMappedMemoryRangeBuilder::new()
-        //     .memory(*out_buffer.memory())
-        //     .offset(0)
-        //     .size(out_buffer.vksize())
-        //     .build();
-        //     out_buffer.invalidate_mapped_memory_ranges(1, &mapped_ranges);
+        let new_mapped = out_buffer
+            .map_memory(0, VK_WHOLE_SIZE as u64, 0)
+            .unwrap();
+        let mapped_ranges = VkMappedMemoryRangeBuilder::new()
+            .memory(*out_buffer.memory())
+            .offset(0)
+            .size(VK_WHOLE_SIZE as u64)
+            .build();
+        out_buffer.invalidate_mapped_memory_ranges(1, &mapped_ranges);
 
         // let mut finalle = [[T::default(); R]; C];
         // println!("finalle {:?}", finalle);
@@ -392,8 +387,7 @@ where
         //     memcpy(new_mapped.cast(), finalle.as_mut_ptr(), 2);
         // }
         // println!("finalle {:?}", finalle);
-        // out_buffer.unmap_memory();
-
+        out_buffer.unmap_memory();
         let mapped = out_buffer.map_to_cpu_and_unmap();
         println!("{:?}", mapped);
     }

@@ -1,8 +1,10 @@
 extern crate winit;
 use anyhow::{anyhow, Result};
 use paste::paste;
-use vrx::vx::*;
 use vrx::*;
+
+use lazy_static::lazy_static;
+use nalgebra_glm as glm;
 
 use winit::{
     dpi::LogicalSize,
@@ -23,7 +25,7 @@ struct Presentation<'a> {
     format: VkSurfaceFormatKHR,
     extent: VkExtent2D,
 
-    device: Option<&'a vx::Device>,
+    device: Option<&'a VkDevice>,
 }
 
 impl<'a> Default for Presentation<'a> {
@@ -41,7 +43,7 @@ impl<'a> Default for Presentation<'a> {
 }
 
 impl<'a> Presentation<'a> {
-    fn new(device: &'a vx::Device, window: &Window) -> Self {
+    fn new(device: &'a VkDevice, queue_family_indices: &Vec<u32>, window: &Window) -> Self {
         let surface = Self::new_surface(&window);
         let support = SwapchainSupport::new(&surface);
 
@@ -53,6 +55,7 @@ impl<'a> Presentation<'a> {
         let extent = support.get_swapchain_extent();
         let swapchain = Self::new_swapchain(
             device,
+            queue_family_indices,
             &surface,
             support.capabilities,
             format,
@@ -87,17 +90,18 @@ impl<'a> Presentation<'a> {
     }
 
     fn new_swapchain(
-        device: &vx::Device,
+        device: &VkDevice,
+        queue_family_indices: &Vec<u32>,
         surface: &VkSurfaceKHR,
         capabilities: VkSurfaceCapabilitiesKHR,
         surface_format: VkSurfaceFormatKHR,
         present_mode: VkPresentModeKHR,
         extent: VkExtent2D,
     ) -> VkSwapchainKHR {
-        let queue_family_indices = device
-            .queue_family_indices
-            .get(&vx::QueueType::graphics)
-            .unwrap();
+        // let queue_family_indices = device
+        // .queue_family_indices
+        // .get(&vx::QueueType::graphics)
+        // .unwrap();
         let swapchain_create_info = VkSwapchainCreateInfoKHRBuilder::new()
             .surface(*surface)
             .min_image_count(capabilities.minImageCount)
@@ -114,14 +118,11 @@ impl<'a> Presentation<'a> {
             .present_mode(present_mode)
             .clipped(VK_TRUE)
             .build();
-        let swapchain = device
-            .create_swapchain(&swapchain_create_info, None)
-            .unwrap();
-        swapchain
+        device.create_swapchain(&swapchain_create_info, None)
     }
 
     fn new_image_views(
-        device: &vx::Device,
+        device: &VkDevice,
         images: &Vec<VkImage>,
         format: VkSurfaceFormatKHR,
     ) -> Vec<VkImageView> {
@@ -150,9 +151,7 @@ impl<'a> Presentation<'a> {
                     .components(components)
                     .subresource_range(subresource_range)
                     .build();
-                device
-                    .create_image_view(&image_view_create_info, None)
-                    .unwrap()
+                device.create_image_view(&image_view_create_info, None)
             })
             .collect::<Vec<VkImageView>>();
 
@@ -178,7 +177,7 @@ struct ShaderModules<'a> {
     shader_stages: Vec<VkShaderStageFlagBits>,
     create_infos: Vec<VkPipelineShaderStageCreateInfo>,
 
-    device: Option<&'a vx::Device>,
+    device: Option<&'a VkDevice>,
 }
 
 impl<'a> Default for ShaderModules<'a> {
@@ -195,14 +194,14 @@ impl<'a> Default for ShaderModules<'a> {
 
 impl<'a> ShaderModules<'a> {
     fn new(
-        device: &'a vx::Device,
+        device: &'a VkDevice,
         shader_bytes: &[&[u8]],
         shader_stages: &[VkShaderStageFlagBits],
     ) -> Self {
         let shader_modules = shader_bytes
             .iter()
             .enumerate()
-            .map(|(i, bytes)| device.create_shader_module(bytes).unwrap())
+            .map(|(i, bytes)| device.create_shader_module(bytes, None))
             .collect::<Vec<VkShaderModule>>();
 
         let mut shader_modules = Self {
@@ -262,33 +261,19 @@ struct GraphicsPipelineProperties {
     color_blend_attachments: Vec<VkPipelineColorBlendAttachmentState>,
 }
 
-const VERT_SPV: &[u8] = include_bytes!("./shader/vertex.spv");
-const FRAG_SPV: &[u8] = include_bytes!("./shader/fragment.spv");
-
 impl GraphicsPipelineProperties {
-    fn new(device: &vx::Device, presentation: &Presentation) -> Self {
-        //
-        // 1. shader module
-        //
-        // let vert = device.create_shader_module(VERT_SPV).unwrap();
-        // let frag = device.create_shader_module(FRAG_SPV).unwrap();
-
-        // let vert_stage = VkPipelineShaderStageCreateInfoBuilder::new()
-        //     .stage(VK_SHADER_STAGE_VERTEX_BIT)
-        //     .module(vert)
-        //     .p_name(b"main\0".as_ptr() as *const i8)
-        //     .build();
-        // let frag_stage = VkPipelineShaderStageCreateInfoBuilder::new()
-        //     .stage(VK_SHADER_STAGE_FRAGMENT_BIT)
-        //     .module(frag)
-        //     .p_name(b"main\0".as_ptr() as *const i8)
-        //     .build();
-        // let shader_stages = vec![vert_stage, frag_stage];
-
+    fn new(presentation: &Presentation) -> Self {
         //
         // 2. fixed function
         //
-        let vertex_input_state = VkPipelineVertexInputStateCreateInfoBuilder::new().build();
+        let binding_descriptions = Vertex::binding_description();
+        let attribute_descriptions = Vertex::attribute_descriptions();
+        let vertex_input_state = VkPipelineVertexInputStateCreateInfoBuilder::new()
+            // .vertex_binding_description_count(1)
+            // .p_vertex_binding_descriptions(&binding_descriptions)
+            // .vertex_attribute_description_count(1)
+            // .p_vertex_attribute_descriptions(attribute_descriptions.as_ptr())
+            .build();
 
         let input_assembly_state = VkPipelineInputAssemblyStateCreateInfoBuilder::new()
             .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
@@ -371,7 +356,8 @@ struct GraphicsPipeline<'a> {
     render_pass: VkRenderPass,
     pipeline_layout: VkPipelineLayout,
     pipeline: VkPipeline,
-    device: Option<&'a vx::Device>,
+
+    device: Option<&'a VkDevice>,
 }
 
 impl<'a> Default for GraphicsPipeline<'a> {
@@ -387,7 +373,7 @@ impl<'a> Default for GraphicsPipeline<'a> {
 
 impl<'a> GraphicsPipeline<'a> {
     fn new(
-        device: &'a vx::Device,
+        device: &'a VkDevice,
         presentation: &Presentation,
         shader_stages: &ShaderModules,
         properties: &GraphicsPipelineProperties,
@@ -403,7 +389,7 @@ impl<'a> GraphicsPipeline<'a> {
         instance
     }
 
-    fn set_device(&mut self, device: &'a vx::Device) {
+    fn set_device(&mut self, device: &'a VkDevice) {
         self.device = Some(device);
     }
 
@@ -468,8 +454,7 @@ impl<'a> GraphicsPipeline<'a> {
         self.render_pass = self
             .device
             .unwrap()
-            .create_render_pass(&render_pass_create_info, None)
-            .unwrap();
+            .create_render_pass(&render_pass_create_info, None);
     }
 
     fn create_pipeline_layout(&mut self) {
@@ -477,8 +462,7 @@ impl<'a> GraphicsPipeline<'a> {
         self.pipeline_layout = self
             .device
             .unwrap()
-            .create_pipeline_layout(&pipeline_layout_create_info, None)
-            .unwrap();
+            .create_pipeline_layout(&pipeline_layout_create_info, None);
     }
 
     fn create_pipeline(
@@ -504,15 +488,71 @@ impl<'a> GraphicsPipeline<'a> {
         let pipeline_cache = self
             .device
             .unwrap()
-            .create_pipeline_cache(&pipeline_cache_create_info, None)
-            .unwrap();
+            .create_pipeline_cache(&pipeline_cache_create_info, None);
 
-        self.pipeline = self
-            .device
-            .unwrap()
-            .create_graphics_pipelines(pipeline_cache, 1, &pipeline_create_info)
-            .unwrap()[0];
+        self.pipeline = self.device.unwrap().create_graphics_pipelines(
+            pipeline_cache,
+            &[pipeline_create_info],
+            None,
+        )[0];
     }
+}
+
+// impl Drop for App {
+//     fn drop(&mut self) {
+//         // presentation.drop();
+
+//         self.framebuffers
+//             .iter()
+//             .for_each(|buf| self.device.destroy_framebuffer(*buf, None));
+//     }
+// }
+
+const VERT_SPV: &[u8] = include_bytes!("./shader/vertex.spv");
+const FRAG_SPV: &[u8] = include_bytes!("./shader/fragment.spv");
+
+#[repr(C)]
+struct Vertex {
+    pos: glm::Vec3,
+    col: glm::Vec3,
+}
+
+impl Vertex {
+    fn new(pos: glm::Vec3, col: glm::Vec3) -> Self {
+        Self { pos, col }
+    }
+
+    fn binding_description() -> VkVertexInputBindingDescription {
+        VkVertexInputBindingDescriptionBuilder::new()
+            .binding(0)
+            .stride(std::mem::size_of::<Vertex>() as u32)
+            .input_rate(VK_VERTEX_INPUT_RATE_VERTEX)
+            .build()
+    }
+
+    fn attribute_descriptions() -> [VkVertexInputAttributeDescription; 2] {
+        let pos = VkVertexInputAttributeDescriptionBuilder::new()
+            .binding(0)
+            .location(0)
+            .format(VK_FORMAT_R32G32B32_SFLOAT)
+            .offset(0)
+            .build();
+        let col = VkVertexInputAttributeDescriptionBuilder::new()
+            .binding(0)
+            .location(0)
+            .format(VK_FORMAT_R32G32B32_SFLOAT)
+            .offset(0)
+            .build();
+        [pos, col]
+    }
+}
+
+lazy_static! {
+    static ref VERTICES: Vec<Vertex> = vec![
+        Vertex::new(glm::vec3(0.0, -0.5, 0.0), glm::vec3(1.0, 0.0, 0.0)),
+        Vertex::new(glm::vec3(0.5, 0.5, 0.0), glm::vec3(0.0, 1.0, 0.0)),
+        Vertex::new(glm::vec3(-0.5, 0.5, 0.0), glm::vec3(0.0, 0.0, 1.0)),
+    ];
 }
 
 struct App<'a> {
@@ -528,37 +568,35 @@ struct App<'a> {
     images_in_flight: Vec<VkFence>,
     frame: usize,
     resized: bool,
-    device: &'a vx::Device,
+
+    handler: &'a VulkanResourceHandler,
 }
 
-// impl Drop for App {
-//     fn drop(&mut self) {
-//         // presentation.drop();
-
-//         self.framebuffers
-//             .iter()
-//             .for_each(|buf| self.device.destroy_framebuffer(*buf, None));
-//     }
-// }
-
 impl<'a> App<'a> {
-    pub fn new(device: &'a vx::Device, window: &Window) -> App<'a> {
+    pub fn new(handler: &'a VulkanResourceHandler, window: &Window) -> App<'a> {
         let shader_stages = ShaderModules::new(
-            device,
+            &handler.device,
             &[VERT_SPV, FRAG_SPV],
             &[VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT],
         );
-        let presentation = Presentation::new(device, window);
-        let graphics_pipeline_properties = GraphicsPipelineProperties::new(device, &presentation);
+        let presentation = Presentation::new(
+            &handler.device,
+            handler
+                .queue_family_indices
+                .get(&QueueType::graphics)
+                .unwrap(),
+            window,
+        );
+        let graphics_pipeline_properties = GraphicsPipelineProperties::new(&presentation);
         let graphics_pipeline = GraphicsPipeline::new(
-            device,
+            &handler.device,
             &presentation,
             &shader_stages,
             &graphics_pipeline_properties,
         );
 
         let mut app = Self {
-            device: device,
+            handler: handler,
             shader_stages: shader_stages,
             presentation: presentation,
             graphics_pipeline_properties: graphics_pipeline_properties,
@@ -582,13 +620,12 @@ impl<'a> App<'a> {
 
     pub fn render(&mut self, window: &Window) -> Result<()> {
         // syn cpu gpu
+        let device = &self.handler.device;
 
         let in_flight_fence = self.in_flight_fences[self.frame];
 
-        self.device
-            .wait_for_fence(1, &in_flight_fence, true, u64::MAX);
-
-        let result = self.device.acquire_next_image_khr(
+        device.wait_for_fence(&[in_flight_fence], true, u64::MAX);
+        let result = device.acquire_next_image_khr(
             self.presentation.swapchain,
             u64::MAX,
             self.image_available_semaphores[self.frame],
@@ -604,8 +641,7 @@ impl<'a> App<'a> {
         let image_in_flight = self.images_in_flight[image_index as usize];
         // println!("{:?}, {:?}", self.frame, self.images_in_flight[image_index as usize]);
         if !image_in_flight.is_null() {
-            self.device
-                .wait_for_fence(1, &image_in_flight, true, u64::MAX);
+            device.wait_for_fence(&[image_in_flight], true, u64::MAX);
         }
         self.images_in_flight[image_index as usize] = in_flight_fence;
 
@@ -623,18 +659,13 @@ impl<'a> App<'a> {
             .p_signal_semaphores(signal_semaphores.as_ptr())
             .build();
 
-        self.device.reset_fence(
-            self.in_flight_fences.len() as u32,
-            self.in_flight_fences.as_ptr(),
-        );
+        device.reset_fence(self.in_flight_fences.as_slice());
 
-        self.device.queue_submit(
-            QueueType::graphics,
+        let queue = device.get_queue(
+            self.handler.queue_family_indices.get(&QueueType::graphics).unwrap()[0],
             0,
-            1,
-            &submit_info,
-            self.in_flight_fences[self.frame],
         );
+        queue.queue_submit(0, 1, &submit_info, self.in_flight_fences[self.frame]);
 
         // presenting queue
         let present_info = VkPresentInfoKHRBuilder::new()
@@ -644,9 +675,7 @@ impl<'a> App<'a> {
             .p_swapchains(&self.presentation.swapchain)
             .p_image_indices(&image_index)
             .build();
-        let result = self
-            .device
-            .queue_present_khr(QueueType::graphics, 0, &present_info);
+        let result = queue.queue_present_khr(0, &present_info);
 
         let changed =
             result == VkResult::VK_SUBOPTIMAL_KHR || result == VkResult::VK_ERROR_OUT_OF_DATE_KHR;
@@ -664,6 +693,8 @@ impl<'a> App<'a> {
     }
 
     fn create_framebuffers(&mut self) {
+        let device = &self.handler.device;
+
         self.framebuffers = self
             .presentation
             .image_views
@@ -677,16 +708,15 @@ impl<'a> App<'a> {
                     .height(self.presentation.extent.height)
                     .layers(1)
                     .build();
-                self.device
-                    .create_framebuffer(&framebuffer_create_info, None)
-                    .unwrap()
+                device.create_framebuffer(&framebuffer_create_info, None)
             })
             .collect();
     }
 
     fn create_command_buffers(&mut self) {
+        let device = &self.handler.device;
         self.command_buffers = self
-            .device
+            .handler
             .allocate_command_buffers(
                 QueueType::graphics,
                 VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -721,6 +751,8 @@ impl<'a> App<'a> {
     }
 
     fn create_sync_objects(&mut self) {
+        let device = &self.handler.device;
+
         let semaphore_create_info = VkSemaphoreCreateInfoBuilder::new().build();
         let fence_create_info = VkFenceCreateInfoBuilder::new()
             .flags(VK_FENCE_CREATE_SIGNALED_BIT as u32)
@@ -729,18 +761,12 @@ impl<'a> App<'a> {
         self.render_finished_semaphores = vec![];
         self.in_flight_fences = vec![];
         for _ in 0..2 {
-            self.image_available_semaphores.push(
-                self.device
-                    .create_semaphore(&semaphore_create_info, None)
-                    .unwrap(),
-            );
-            self.render_finished_semaphores.push(
-                self.device
-                    .create_semaphore(&semaphore_create_info, None)
-                    .unwrap(),
-            );
+            self.image_available_semaphores
+                .push(device.create_semaphore(&semaphore_create_info, None));
+            self.render_finished_semaphores
+                .push(device.create_semaphore(&semaphore_create_info, None));
             self.in_flight_fences
-                .push(self.device.create_fence(&fence_create_info, None).unwrap());
+                .push(device.create_fence(&fence_create_info, None));
         }
 
         self.images_in_flight = self
@@ -752,15 +778,24 @@ impl<'a> App<'a> {
     }
 
     fn recreate_presentation(&mut self, window: &Window) -> Result<()> {
-        self.device.wait_idle();
+        let device = &self.handler.device;
+
+        device.wait_idle();
         self.presentation.destroy();
         self.graphics_pipeline.destroy();
 
-        self.presentation = Presentation::new(&self.device, window);
+        self.presentation = Presentation::new(
+            &device,
+            self.handler
+                .queue_family_indices
+                .get(&QueueType::graphics)
+                .unwrap(),
+            window,
+        );
         self.graphics_pipeline_properties =
-        GraphicsPipelineProperties::new(&self.device, &self.presentation);
+            GraphicsPipelineProperties::new(&self.presentation);
         self.graphics_pipeline = GraphicsPipeline::new(
-            &self.device,
+            &device,
             &self.presentation,
             &self.shader_stages,
             &self.graphics_pipeline_properties,
@@ -777,30 +812,33 @@ impl<'a> App<'a> {
     }
 
     fn destroy_sync_objects(&mut self) {
+        let device = &self.handler.device;
+
         self.in_flight_fences.iter().for_each(|fence| {
-            self.device.destroy_fence(*fence, None);
+            device.destroy_fence(*fence, None);
         });
         self.images_in_flight.iter().for_each(|fence| {
-            self.device.destroy_fence(*fence, None);
+            device.destroy_fence(*fence, None);
         });
         self.image_available_semaphores
             .iter()
             .for_each(|semaphore| {
-                self.device.destroy_semaphore(*semaphore, None);
+                device.destroy_semaphore(*semaphore, None);
             });
         self.render_finished_semaphores
             .iter()
             .for_each(|semaphore| {
-                self.device.destroy_semaphore(*semaphore, None);
+                device.destroy_semaphore(*semaphore, None);
             });
     }
 
     pub fn destroy(&mut self) {
-        self.device.wait_idle();
+        self.handler.device.wait_idle();
 
         self.presentation.destroy();
-        self.shader_stages.destroy();
-        self.graphics_pipeline.destroy();
+
+        // self.shader_stages.destroy();
+        // self.graphics_pipeline.destroy();
         // self.destroy_sync_objects();
         // self.device.destroy();
     }
@@ -816,8 +854,8 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let device = vx::Device::new(&[(vx::QueueType::graphics, 1)]);
-    let mut app = App::new(&device, &window);
+    let handler = VulkanResourceHandler::new(&[(QueueType::graphics, 1)]);
+    let mut app = App::new(&handler, &window);
 
     // non static event loop
     let mut destroying = false;
