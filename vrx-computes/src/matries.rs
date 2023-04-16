@@ -184,8 +184,7 @@ where
             })
             .build();
 
-        let image_view = device
-            .create_image_view(&image_view_create_info, None);
+        let image_view = device.create_image_view(&image_view_create_info, None);
 
         let image_descriptor = VkDescriptorImageInfo {
             sampler: sampler,
@@ -227,16 +226,15 @@ where
             .p_pool_sizes(pool_sizes.as_ptr())
             .build();
 
-        let descriptor_pool = device
-            .create_descriptor_pool(&descriptor_pool_create_info, None);
+        let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None);
 
         let descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfoBuilder::new()
             .binding_count(layout_bindings.len() as u32)
             .p_bindings(layout_bindings.as_ptr())
             .build();
 
-        let descriptor_set_layout = device
-            .create_descriptor_set_layout(&descriptor_set_layout_create_info, None);
+        let descriptor_set_layout =
+            device.create_descriptor_set_layout(&descriptor_set_layout_create_info, None);
 
         let descriptor_set_alloc_info = VkDescriptorSetAllocateInfoBuilder::new()
             .descriptor_pool(descriptor_pool)
@@ -274,8 +272,7 @@ where
             .flags(0)
             .initial_data_size(0)
             .build();
-        let pipeline_cache = device
-            .create_pipeline_cache(&pipeline_cache_create_info, None);
+        let pipeline_cache = device.create_pipeline_cache(&pipeline_cache_create_info, None);
 
         let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
             .flags(0)
@@ -285,8 +282,7 @@ where
             .p_set_layouts(&descriptor_set_layout)
             .build();
 
-        let pipeline_layout = device
-            .create_pipeline_layout(&pipeline_layout_create_info, None);
+        let pipeline_layout = device.create_pipeline_layout(&pipeline_layout_create_info, None);
 
         let pipeline_stage_create_info = VkPipelineShaderStageCreateInfoBuilder::new()
             .stage(VK_SHADER_STAGE_COMPUTE_BIT)
@@ -301,8 +297,8 @@ where
             .layout(pipeline_layout)
             .base_pipeline_index(0)
             .build();
-        let pipelines = device
-            .create_compute_pipelines(pipeline_cache, &[compute_pipeline_create_info], None);
+        let pipelines =
+            device.create_compute_pipelines(pipeline_cache, &[compute_pipeline_create_info], None);
         let pipeline = pipelines[0];
 
         //
@@ -366,14 +362,15 @@ where
             .p_command_buffers(&cmd)
             .build();
 
-        let queue_family_index = handler.queue_family_indices.get(&QueueType::computes).unwrap()[0];
+        let queue_family_index = handler
+            .queue_family_indices
+            .get(&QueueType::computes)
+            .unwrap()[0];
         let queue = device.get_queue(queue_family_index, 0);
         queue.queue_submit(0, 1, &submit_info, fence1);
         device.wait_for_fence(&[fence1], false, u64::MAX);
 
-        let new_mapped = out_buffer
-            .map_memory(0, VK_WHOLE_SIZE as u64, 0)
-            .unwrap();
+        let new_mapped = out_buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0).unwrap();
         let mapped_ranges = VkMappedMemoryRangeBuilder::new()
             .memory(*out_buffer.memory())
             .offset(0)
