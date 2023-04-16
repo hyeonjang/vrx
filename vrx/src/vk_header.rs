@@ -40,6 +40,7 @@ pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf
     "VkSemaphoreCreateInfo" => VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     "VkMappedMemoryRange" => VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
     "VkBufferMemoryBarrier" => VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+    "VkShaderModuleCreateInfo" => VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
     "VkPipelineVertexInputStateCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
     "VkPipelineInputAssemblyStateCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
     "VkPipelineViewportStateCreateInfo" => VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -538,6 +539,16 @@ impl_builder_for_vk_structure_t!(
 );
 
 impl_builder_for_vk_structure_t!(
+    pub struct VkShaderModuleCreateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub flags: VkShaderModuleCreateFlags,
+        pub codeSize: usize,
+        pub pCode: *const u32,
+    }
+);
+
+impl_builder_for_vk_structure_t!(
     pub struct VkPipelineShaderStageCreateInfo {
         pub sType: VkStructureType,
         pub pNext: *const ::std::os::raw::c_void,
@@ -656,6 +667,23 @@ impl_builder_for_vk_structure_t!(
         pub flags: VkWin32SurfaceCreateFlagsKHR,
         pub hinstance: HINSTANCE,
         pub hwnd: HWND,
+    }
+);
+
+impl_builder_for_vk_none_structure_t!(
+    pub struct VkVertexInputBindingDescription {
+        pub binding: u32,
+        pub stride: u32,
+        pub inputRate: VkVertexInputRate,
+    }
+);
+
+impl_builder_for_vk_none_structure_t!(
+    pub struct VkVertexInputAttributeDescription {
+        pub location: u32,
+        pub binding: u32,
+        pub format: VkFormat,
+        pub offset: u32,
     }
 );
 
