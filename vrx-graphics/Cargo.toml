@@ -10,3 +10,7 @@ vrx = { path = "../vrx", features=["graphics"] }
 winit = "0.28.3"
 paste = "1.0"
 anyhow = "1.0"
+nalgebra = "*"
+nalgebra-glm = "*"
+lazy_static = "*"
+
