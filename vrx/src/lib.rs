@@ -138,6 +138,16 @@ macro_rules! vkCmdBlock {
                 );
             };
 
+            (BIND_VERTEX_BUFFERS($first_binding:expr, $binding_count:expr, $p_buffers:expr, $p_offsets:expr)) => {
+                vkCmdBindVertexBuffers(
+                    $cmd, 
+                    $first_binding,
+                    $binding_count,
+                    $p_buffers,
+                    $p_offsets,
+                );
+            };
+
             (COPY_BUFFER($source:expr, $target:expr, $num:expr, $buffer_copy:expr)) => {
                 vkCmdCopyBuffer($cmd, $source, $target, $num, $buffer_copy);
             };
@@ -1289,17 +1299,14 @@ impl VulkanResourceHandler {
     //
     // high level api
     //
-    pub fn create_vxbuffer<'a, 'b, T>(
-        &'b self,
-        data: &'a mut T,
+    pub fn create_vxbuffer<'a, T>(
+        &'a self,
+        data: *const T,
         len: u32,
         usage: VkBufferUsageFlagBits,
         flags: VkBufferCreateFlags,
         mem_prop_flags: VkMemoryPropertyFlagBits,
-    ) -> Result<VxBuffer<T>>
-    where
-        'a: 'b,
-    {
+    ) -> Result<VxBuffer<T>> {
         Ok(VxBuffer::<T>::new(
             data,
             len,
@@ -1425,17 +1432,17 @@ pub trait Memory {
 }
 
 #[derive(Debug)]
-pub struct VxBuffer<'a, 'b, T> {
+pub struct VxBuffer<'a, T> {
     device: &'a VkDevice,
 
-    buffer: VkBuffer,
+    pub buffer: VkBuffer,
     memory: VkDeviceMemory,
 
-    data: &'b mut T,
+    data: *const T,
     len: u32,
 }
 
-impl<'a, 'b, T> Memory for VxBuffer<'a, 'b, T> {
+impl<'a, T> Memory for VxBuffer<'a, T> {
     fn device(&self) -> &VkDevice {
         self.device
     }
@@ -1481,9 +1488,9 @@ impl<'a, 'b, T> Memory for VxBuffer<'a, 'b, T> {
     }
 }
 
-impl<'a, 'b, T> VxBuffer<'a, 'b, T> {
+impl<'a, T> VxBuffer<'a, T> {
     pub fn new(
-        data: &'b mut T,
+        data: *const T,
         len: u32,
         flags: VkBufferCreateFlags,
         usage: VkBufferUsageFlags,

@@ -98,10 +98,6 @@ impl<'a> Presentation<'a> {
         present_mode: VkPresentModeKHR,
         extent: VkExtent2D,
     ) -> VkSwapchainKHR {
-        // let queue_family_indices = device
-        // .queue_family_indices
-        // .get(&vx::QueueType::graphics)
-        // .unwrap();
         let swapchain_create_info = VkSwapchainCreateInfoKHRBuilder::new()
             .surface(*surface)
             .min_image_count(capabilities.minImageCount)
@@ -248,8 +244,6 @@ impl<'a> ShaderModules<'a> {
 
 #[derive(Debug, Default)]
 struct GraphicsPipelineProperties {
-    // shader_stages: Vec<VkPipelineShaderStageCreateInfo>,
-    // shader_stages: ShaderModules<'a>,
     vertex_input_state: VkPipelineVertexInputStateCreateInfo,
     input_assembly_state: VkPipelineInputAssemblyStateCreateInfo,
     viewport_state: VkPipelineViewportStateCreateInfo,
@@ -259,6 +253,8 @@ struct GraphicsPipelineProperties {
     viewports: Vec<VkViewport>,
     scissors: Vec<VkRect2D>,
     color_blend_attachments: Vec<VkPipelineColorBlendAttachmentState>,
+    binding_description: Vec<VkVertexInputBindingDescription>,
+    attribute_descriptions: Vec<VkVertexInputAttributeDescription>
 }
 
 impl GraphicsPipelineProperties {
@@ -266,14 +262,38 @@ impl GraphicsPipelineProperties {
         //
         // 2. fixed function
         //
-        let binding_descriptions = Vertex::binding_description();
-        let attribute_descriptions = Vertex::attribute_descriptions();
-        let vertex_input_state = VkPipelineVertexInputStateCreateInfoBuilder::new()
-            // .vertex_binding_description_count(1)
-            // .p_vertex_binding_descriptions(&binding_descriptions)
-            // .vertex_attribute_description_count(1)
-            // .p_vertex_attribute_descriptions(attribute_descriptions.as_ptr())
+        let pos = VkVertexInputAttributeDescriptionBuilder::new()
+            .binding(0)
+            .location(0)
+            .format(VK_FORMAT_R32G32_SFLOAT)
+            .offset(0)
             .build();
+        let col = VkVertexInputAttributeDescriptionBuilder::new()
+            .binding(0)
+            .location(1)
+            .format(VK_FORMAT_R32G32B32_SFLOAT)
+            .offset(std::mem::size_of::<glm::Vec2>() as u32)
+            .build();
+
+        let mut bd = VkVertexInputBindingDescriptionBuilder::new()
+            .binding(0)
+            .stride(std::mem::size_of::<Vertex>() as u32)
+            .input_rate(VK_VERTEX_INPUT_RATE_VERTEX)
+            .build();
+
+        // binding_description.inputRate = 0;
+
+        // println!("{:?}", binding_description);
+        let binding_description = vec![bd];
+        let attribute_descriptions = vec![pos, col];
+        let vertex_input_state = VkPipelineVertexInputStateCreateInfoBuilder::new()
+            .vertex_binding_description_count(binding_description.len() as u32)
+            .p_vertex_binding_descriptions(binding_description.as_ptr())
+            .vertex_attribute_description_count(attribute_descriptions.len() as u32)
+            .p_vertex_attribute_descriptions(attribute_descriptions.as_ptr())
+            .build();
+
+        println!("{:?}", vertex_input_state.pVertexBindingDescriptions);
 
         let input_assembly_state = VkPipelineInputAssemblyStateCreateInfoBuilder::new()
             .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
@@ -348,6 +368,8 @@ impl GraphicsPipelineProperties {
             viewports,
             scissors,
             color_blend_attachments,
+            binding_description,
+            attribute_descriptions
         }
     }
 }
@@ -513,12 +535,12 @@ const FRAG_SPV: &[u8] = include_bytes!("./shader/fragment.spv");
 
 #[repr(C)]
 struct Vertex {
-    pos: glm::Vec3,
+    pos: glm::Vec2,
     col: glm::Vec3,
 }
 
 impl Vertex {
-    fn new(pos: glm::Vec3, col: glm::Vec3) -> Self {
+    fn new(pos: glm::Vec2, col: glm::Vec3) -> Self {
         Self { pos, col }
     }
 
@@ -539,7 +561,7 @@ impl Vertex {
             .build();
         let col = VkVertexInputAttributeDescriptionBuilder::new()
             .binding(0)
-            .location(0)
+            .location(1)
             .format(VK_FORMAT_R32G32B32_SFLOAT)
             .offset(0)
             .build();
@@ -549,9 +571,9 @@ impl Vertex {
 
 lazy_static! {
     static ref VERTICES: Vec<Vertex> = vec![
-        Vertex::new(glm::vec3(0.0, -0.5, 0.0), glm::vec3(1.0, 0.0, 0.0)),
-        Vertex::new(glm::vec3(0.5, 0.5, 0.0), glm::vec3(0.0, 1.0, 0.0)),
-        Vertex::new(glm::vec3(-0.5, 0.5, 0.0), glm::vec3(0.0, 0.0, 1.0)),
+        Vertex::new(glm::vec2(0.0, -0.5), glm::vec3(1.0, 0.0, 0.0)),
+        Vertex::new(glm::vec2(0.5, 0.5), glm::vec3(0.0, 1.0, 0.0)),
+        Vertex::new(glm::vec2(-0.5, 0.5), glm::vec3(0.0, 0.0, 1.0)),
     ];
 }
 
@@ -569,6 +591,7 @@ struct App<'a> {
     frame: usize,
     resized: bool,
 
+    vertex_buffer: VkBuffer,
     handler: &'a VulkanResourceHandler,
 }
 
@@ -609,9 +632,11 @@ impl<'a> App<'a> {
             images_in_flight: vec![],
             frame: 0,
             resized: false,
+            vertex_buffer: vk_instantiate!(VkBuffer),
         };
 
         app.create_framebuffers();
+        app.create_vertex_buffer();
         app.create_command_buffers();
         app.create_sync_objects();
 
@@ -621,7 +646,6 @@ impl<'a> App<'a> {
     pub fn render(&mut self, window: &Window) -> Result<()> {
         // syn cpu gpu
         let device = &self.handler.device;
-
         let in_flight_fence = self.in_flight_fences[self.frame];
 
         device.wait_for_fence(&[in_flight_fence], true, u64::MAX);
@@ -662,7 +686,10 @@ impl<'a> App<'a> {
         device.reset_fence(self.in_flight_fences.as_slice());
 
         let queue = device.get_queue(
-            self.handler.queue_family_indices.get(&QueueType::graphics).unwrap()[0],
+            self.handler
+                .queue_family_indices
+                .get(&QueueType::graphics)
+                .unwrap()[0],
             0,
         );
         queue.queue_submit(0, 1, &submit_info, self.in_flight_fences[self.frame]);
@@ -690,6 +717,30 @@ impl<'a> App<'a> {
         self.frame = (self.frame + 1) % 2;
 
         Ok(())
+    }
+
+    fn create_vertex_buffer(&mut self) {
+        let buffer_create_info = VkBufferCreateInfoBuilder::new()
+            .size((std::mem::size_of::<Vertex>() * VERTICES.len()) as u64)
+            .usage(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT as u32)
+            .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
+            .build();
+
+        let buffer = self
+            .handler
+            .create_vxbuffer(
+                VERTICES.as_ptr(),
+                VERTICES.len() as u32,
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                VK_SHARING_MODE_EXCLUSIVE as u32,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+            )
+            .unwrap();
+
+        buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0);
+        buffer.unmap_memory();
+
+        self.vertex_buffer = buffer.buffer;
     }
 
     fn create_framebuffers(&mut self) {
@@ -744,6 +795,8 @@ impl<'a> App<'a> {
                 BIND_PIPELINE(
                     VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline
                 );
+                BIND_VERTEX_BUFFERS(0, 1, &self.vertex_buffer, (&[0]).as_ptr());
+                // DRAW(VERTICES.len() as u32, 1, 0, 0);
                 DRAW(3, 1, 0, 0);
                 END_RENDER_PASS();
             };
@@ -792,8 +845,7 @@ impl<'a> App<'a> {
                 .unwrap(),
             window,
         );
-        self.graphics_pipeline_properties =
-            GraphicsPipelineProperties::new(&self.presentation);
+        self.graphics_pipeline_properties = GraphicsPipelineProperties::new(&self.presentation);
         self.graphics_pipeline = GraphicsPipeline::new(
             &device,
             &self.presentation,
