@@ -720,27 +720,58 @@ impl<'a> App<'a> {
     }
 
     fn create_vertex_buffer(&mut self) {
+        println!("create_vertex_buffer");
+
         let buffer_create_info = VkBufferCreateInfoBuilder::new()
             .size((std::mem::size_of::<Vertex>() * VERTICES.len()) as u64)
             .usage(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT as u32)
             .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
             .build();
 
-        let buffer = self
+        let staging_buffer = self
             .handler
             .create_vxbuffer(
                 VERTICES.as_ptr(),
                 VERTICES.len() as u32,
                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                // VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 VK_SHARING_MODE_EXCLUSIVE as u32,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             )
             .unwrap();
 
-        buffer.map_memory(0, VK_WHOLE_SIZE as u64, 0);
-        buffer.unmap_memory();
+        staging_buffer.to_gpu();
 
-        self.vertex_buffer = buffer.buffer;
+        let vertex_buffer = self.handler.create_vxbuffer(
+            VERTICES.as_ptr(),
+            VERTICES.len() as u32,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_SHARING_MODE_EXCLUSIVE as u32,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        ).unwrap();
+
+        self.vertex_buffer = staging_buffer.buffer;
+
+        // copy
+        let cmd = self
+            .handler
+            .allocate_command_buffers(&QueueType::graphics, 0, 0, 1)[0];
+        vkCmdBlock! {
+            THIS cmd;
+
+            let copy_info = VkBufferCopy {
+                dstOffset: 0,
+                size: staging_buffer.vksize(),
+                srcOffset: 0,
+            };
+
+            COPY_BUFFER(
+                *staging_buffer.buffer(),
+                *vertex_buffer.buffer(),
+                1,
+                &copy_info
+            );
+        }
     }
 
     fn create_framebuffers(&mut self) {
@@ -766,14 +797,12 @@ impl<'a> App<'a> {
 
     fn create_command_buffers(&mut self) {
         let device = &self.handler.device;
-        self.command_buffers = self
-            .handler
-            .allocate_command_buffers(
-                QueueType::graphics,
-                VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                self.framebuffers.len() as u32,
-            )
-            .unwrap();
+        self.command_buffers = self.handler.allocate_command_buffers(
+            &QueueType::graphics,
+            0,
+            VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            self.framebuffers.len() as u32,
+        );
 
         self.command_buffers.iter().enumerate().for_each(|(i, cmd)| {
             vkCmdBlock! {

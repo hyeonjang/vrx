@@ -25,6 +25,7 @@ pub static STRUCTURE_TYPE_CREATE_INFO_MAP: phf::Map<&str, VkStructureType> = phf
     "VkDeviceCreateInfo" => VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
     "VkSwapchainCreateInfoKHR" => VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
     "VkCommandPoolCreateInfo" => VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+    "VkMemoryAllocateInfo" => VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
     "VkBufferCreateInfo" => VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
     "VkImageCreateInfo" => VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
     "VkImageViewCreateInfo" => VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -247,6 +248,15 @@ impl_builder_for_vk_structure_t!(
         pub pNext: *const ::std::os::raw::c_void,
         pub flags: VkDeviceCreateFlags,
         pub queueFamilyIndex: u32,
+    }
+);
+
+impl_builder_for_vk_structure_t!(
+    pub struct VkMemoryAllocateInfo {
+        pub sType: VkStructureType,
+        pub pNext: *const ::std::os::raw::c_void,
+        pub allocationSize: VkDeviceSize,
+        pub memoryTypeIndex: u32,
     }
 );
 

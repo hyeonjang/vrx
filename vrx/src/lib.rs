@@ -140,7 +140,7 @@ macro_rules! vkCmdBlock {
 
             (BIND_VERTEX_BUFFERS($first_binding:expr, $binding_count:expr, $p_buffers:expr, $p_offsets:expr)) => {
                 vkCmdBindVertexBuffers(
-                    $cmd, 
+                    $cmd,
                     $first_binding,
                     $binding_count,
                     $p_buffers,
@@ -682,26 +682,26 @@ impl VulkanResourceHandler {
         // 3. resource (indices) allocation
         let mut tot_indices: Vec<u32> = vec![0, 1, 2, 3, 4, 5];
         let mut process_queue_family = |queue_type: QueueType, queue_priorities: &[f32]| {
-                let q_inds = find_queue_family(queue_type_map(queue_type));
-                let mut index = 0;
-                for i in q_inds {
-                    for (j, ind) in tot_indices.iter().enumerate() {
-                        if i == *ind {
-                            index = tot_indices.remove(j);
-                            break;
-                        }
+            let q_inds = find_queue_family(queue_type_map(queue_type));
+            let mut index = 0;
+            for i in q_inds {
+                for (j, ind) in tot_indices.iter().enumerate() {
+                    if i == *ind {
+                        index = tot_indices.remove(j);
+                        break;
                     }
                 }
-                let mut queue_type_indices = queue_family_indices.get_mut(&queue_type).unwrap();
-                queue_type_indices.push(index);
+            }
+            let mut queue_type_indices = queue_family_indices.get_mut(&queue_type).unwrap();
+            queue_type_indices.push(index);
 
-                let device_queue_create_info = VkDeviceQueueCreateInfoBuilder::new()
+            let device_queue_create_info = VkDeviceQueueCreateInfoBuilder::new()
                 .queue_family_index(index as u32)
                 .queue_count(queue_priorities.len() as u32)
                 .p_queue_priorities(queue_priorities.as_ptr())
-                    .build();
-                device_queue_create_infos.push(device_queue_create_info);
-            };
+                .build();
+            device_queue_create_infos.push(device_queue_create_info);
+        };
 
         // 3. real execute
         demands
@@ -982,18 +982,30 @@ impl<'a, T> MemoryFunctions for VxBuffer<'a, T> {
     }
 
     fn get_memory_requirements(&self) -> VkMemoryRequirements {
-        let ctx = vulkan_context();
-        unsafe {
-            let mut mem_req = VkMemoryRequirements {
-                size: 0,
-                alignment: 0,
-                memoryTypeBits: 0,
-            };
-            vkGetBufferMemoryRequirements(*self.device(), self.buffer, &mut mem_req);
-
-            mem_req
-        }
+        self.device.get_buffer_memory_requirements(self.buffer)
     }
+
+    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
+        let ctx = vulkan_context();
+
+        //@@ to static
+        let mut mem_prop = ctx.get_physical_device_memory_properties();
+        let mut collect: Vec<u32> = (0..mem_prop.memoryTypeCount).collect();
+        collect.retain(|i| {
+            mem_prop.memoryTypes[*i as usize].propertyFlags
+                & mem_prop_flags as VkMemoryPropertyFlags
+                == mem_prop_flags as VkMemoryPropertyFlags
+        });
+
+        let mut mem_req = self.get_memory_requirements();
+        let mut mem_alloc_info = VkMemoryAllocateInfoBuilder::new()
+            .allocation_size(mem_req.size)
+            .memory_type_index(collect[0])
+            .build();
+
+        self.memory = self.device().allocate_memory(&mem_alloc_info, None);
+    }
+
     fn bind_buffer_memory(&self, offset: VkDeviceSize) {
         unsafe {
             vk_assert(vkBindBufferMemory(
@@ -1015,7 +1027,6 @@ impl<'a, T> VxBuffer<'a, T> {
         mem_prop_flags: VkMemoryPropertyFlagBits,
         device: &'a VkDevice,
     ) -> Self {
-        let mut buf = vk_instantiate!(VkBuffer);
         let mem = vk_instantiate!(VkDeviceMemory);
 
         let info = VkBufferCreateInfo {
@@ -1029,9 +1040,7 @@ impl<'a, T> VxBuffer<'a, T> {
             pQueueFamilyIndices: null(), // no working here
         };
 
-        unsafe {
-            vk_assert(vkCreateBuffer(*device, &info, null(), &mut buf));
-        }
+        let buf = device.create_buffer(&info, None);
 
         let mut buffer = Self {
             buffer: buf,
@@ -1044,13 +1053,15 @@ impl<'a, T> VxBuffer<'a, T> {
         buffer.allocate_memory(mem_prop_flags);
         buffer.bind_buffer_memory(0);
 
-        let mapped = buffer.map_memory(0, buffer.vksize(), 0).unwrap();
-        unsafe {
-            copy_nonoverlapping(buffer.data, mapped.cast(), buffer.len as usize);
-        }
-        buffer.unmap_memory();
-
         buffer
+    }
+
+    pub fn to_gpu(&self) {
+        let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
+        unsafe {
+            copy_nonoverlapping(self.data, mapped.cast(), self.len as usize);
+        }
+        self.unmap_memory();
     }
 
     pub fn buffer(&self) -> &VkBuffer {
@@ -1104,7 +1115,7 @@ pub struct Texture<'a> {
     info: VkImageCreateInfo,
 }
 
-impl<'a> Memory for Texture<'a> {
+impl<'a> MemoryFunctions for Texture<'a> {
     fn device(&self) -> &VkDevice {
         self.device
     }
@@ -1126,7 +1137,6 @@ impl<'a> Memory for Texture<'a> {
     }
 
     fn get_memory_requirements(&self) -> VkMemoryRequirements {
-        let ctx = vulkan_context();
         unsafe {
             let mut mem_req = VkMemoryRequirements {
                 size: 0,
@@ -1137,6 +1147,28 @@ impl<'a> Memory for Texture<'a> {
 
             mem_req
         }
+    }
+
+    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
+        let ctx = vulkan_context();
+
+        let mut mem_prop = ctx.get_physical_device_memory_properties();
+        let mut collect: Vec<u32> = (0..mem_prop.memoryTypeCount).collect();
+        collect.retain(|i| {
+            mem_prop.memoryTypes[*i as usize].propertyFlags
+                & mem_prop_flags as VkMemoryPropertyFlags
+                == mem_prop_flags as VkMemoryPropertyFlags
+        });
+
+        let mut mem_req = self.get_memory_requirements();
+        let mut mem_alloc_info = VkMemoryAllocateInfo {
+            sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            pNext: null(),
+            allocationSize: mem_req.size,
+            memoryTypeIndex: collect[0],
+        };
+
+        self.memory = self.device().allocate_memory(&mem_alloc_info, None);
     }
 
     fn bind_buffer_memory(&self, offset: VkDeviceSize) {
