@@ -738,32 +738,9 @@ impl VulkanResourceHandler {
             queue_family_indices: queue_family_indices,
             command_pools: command_pools,
         };
-        // new_device.new_command_pool();
 
         new_device
     }
-
-    // fn new_command_pool(&mut self) {
-    //     let command_pools = self
-    //         .queue_family_indices
-    //         .iter()
-    //         .map(|(queue_family_index, indices)| {
-    //             let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
-    //                 .queue_family_index(indices[0])
-    //                 .build();
-    //             let command_pool = self
-    //                 .device
-    //                 .create_command_pool(&command_pool_create_info, None);
-    //             // .unwrap();
-    //             // self.command_pools.insert(*queue_type, command_pool);
-    //             (indices[0], command_pool)
-    //         })
-    //         .collect::<Vec<(u32, VkCommandPool)>>();
-
-    //     // command_pools.iter().for_each(move |(u32, pool)| {
-    //     //     self.command_pools.insert(*queue_type, *pool);
-    //     // });
-    // }
 
     pub fn destroy(&mut self) {
         unsafe {

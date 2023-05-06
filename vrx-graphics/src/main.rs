@@ -750,7 +750,6 @@ impl<'a> App<'a> {
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         ).unwrap();
 
-        self.vertex_buffer = staging_buffer.buffer;
 
         // copy
         let cmd = self
@@ -772,6 +771,22 @@ impl<'a> App<'a> {
                 &copy_info
             );
         }
+
+        let submit_info = VkSubmitInfoBuilder::new()
+            .command_buffer_count(1)
+            .p_command_buffers(&cmd)
+            .build();
+
+        let queue = self.handler.device.get_queue(
+            self.handler
+                .queue_family_indices
+                .get(&QueueType::graphics)
+                .unwrap()[0],
+            0,
+        );
+        queue.queue_submit(0, 1, &submit_info, std::ptr::null_mut());
+
+        self.vertex_buffer = vertex_buffer.buffer;
     }
 
     fn create_framebuffers(&mut self) {
