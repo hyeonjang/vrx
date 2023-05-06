@@ -210,6 +210,7 @@ pub trait VkDeviceFunctions {
     fn allocate_memory(&self, memory_allocate_info: *const VkMemoryAllocateInfo, p_allocator: Option<*const VkAllocationCallbacks>) -> VkDeviceMemory;
     fn map_memory(&self, offset: u64, size: u64, flags: u32, memory: &VkDeviceMemory) -> Result<*mut c_void>;
     fn unmap_memory(&self, memory: &VkDeviceMemory);
+    fn free_memory(&self, memory: &VkDeviceMemory, p_allocator: Option<*const VkAllocationCallbacks>);
 
     fn bind_buffer_memory(
         &self,
@@ -373,6 +374,16 @@ impl VkDeviceFunctions for VkDevice {
     fn unmap_memory(&self, memory: &VkDeviceMemory) {
         unsafe {
             vkUnmapMemory(*self, *memory);
+        }
+    }
+
+    fn free_memory(&self, memory: &VkDeviceMemory, p_allocator: Option<*const VkAllocationCallbacks>) {
+        unsafe {
+            if let Some(p) = p_allocator {
+                vkFreeMemory(*self, *memory, p);
+            } else {
+                vkFreeMemory(*self, *memory, null());
+            }
         }
     }
 

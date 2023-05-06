@@ -148,6 +148,16 @@ macro_rules! vkCmdBlock {
                 );
             };
 
+            (BIND_INDEX_BUFFER($buffer:expr, $size:expr, $index_type:expr)) => {
+                vkCmdBindIndexBuffer(
+                    $cmd,
+                    $buffer,
+                    $size,
+                    $index_type,
+                );
+            };
+
+
             (COPY_BUFFER($source:expr, $target:expr, $num:expr, $buffer_copy:expr)) => {
                 vkCmdCopyBuffer($cmd, $source, $target, $num, $buffer_copy);
             };
@@ -178,6 +188,23 @@ macro_rules! vkCmdBlock {
                         $first_vertex,
                         $first_instance
                     );
+            };
+
+            (DRAW_INDEXED(
+                $index_count:expr,
+                $instance_count:expr,
+                $first_index:expr,
+                $vertex_offset:expr,
+                $first_instance:expr
+            )) => {
+                vkCmdDrawIndexed(
+                    $cmd,
+                    $index_count,
+                    $instance_count,
+                    $first_index,
+                    $vertex_offset,
+                    $first_instance,
+                );
             };
 
             (BEGIN_RENDER_PASS(
@@ -1030,14 +1057,6 @@ impl<'a, T> VxBuffer<'a, T> {
         buffer
     }
 
-    pub fn to_gpu(&self) {
-        let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
-        unsafe {
-            copy_nonoverlapping(self.data, mapped.cast(), self.len as usize);
-        }
-        self.unmap_memory();
-    }
-
     pub fn buffer(&self) -> &VkBuffer {
         &self.buffer
     }
@@ -1073,16 +1092,6 @@ impl<'a, T> VxBuffer<'a, T> {
 
     pub fn vksize(&self) -> VkDeviceSize {
         (self.len * size_of::<T>() as u32) as VkDeviceSize
-    }
-
-    pub fn destroy(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
-        unsafe {
-            if let Some(p) = p_allocator {
-                vkDestroyBuffer(*self.device, self.buffer, p);
-            } else {
-                vkDestroyBuffer(*self.device, self.buffer, null());
-            }
-        }
     }
 }
 
