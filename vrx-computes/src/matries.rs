@@ -68,7 +68,7 @@ where
     T: std::fmt::Debug + std::marker::Copy + Default,
 {
     fn cholesky(&self) {
-        let handler = VulkanResourceHandler::new(&[(QueueType::computes, 1)]);
+        let handler = VulkanResourceHandler::new(&[(QueueType::computes, &[1.0])]);
         let device = &handler.device;
 
         let input_constant = PushConstant::new(
@@ -303,9 +303,12 @@ where
 
         //
         // pipepline submit commands
-        let cmd = handler
-            .allocate_command_buffer(QueueType::computes, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
-            .unwrap();
+        let cmd = handler.allocate_command_buffers(
+            &QueueType::computes,
+            0,
+            VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            1,
+        )[0];
         vkCmdBlock! {
             THIS cmd;
 

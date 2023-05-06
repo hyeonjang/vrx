@@ -637,13 +637,14 @@ impl SwapchainSupport {
 #[derive(Debug)]
 pub struct VulkanResourceHandler {
     pub device: VkDevice,
-    pub queue_family_indices: HashMap<QueueType, Vec<u32>>,
-    pub command_pools: HashMap<QueueType, VkCommandPool>,
+    pub queue_family_indices: HashMap<QueueType, Vec<u32>>, // Vec<u32> map to command pools
+    pub command_pools: Vec<VkCommandPool>, // command pools per queue family indices
+                                           // pub descriptor_pools
 }
 
 impl VulkanResourceHandler {
     // pub fn new(demands: Vec<(QueueType, u32)>) -> Self {
-    pub fn new(demands: &[(QueueType, u32)]) -> Self {
+    pub fn new(demands: &[(QueueType, &[f32])]) -> Self {
         let ctx = vulkan_context();
 
         let queue_type_map = |queue_type: QueueType| -> VkQueueFlagBits {
@@ -680,8 +681,7 @@ impl VulkanResourceHandler {
 
         // 3. resource (indices) allocation
         let mut tot_indices: Vec<u32> = vec![0, 1, 2, 3, 4, 5];
-        let mut process_queue_family =
-            |queue_type: QueueType, queue_count: u32, queue_priority: f32| {
+        let mut process_queue_family = |queue_type: QueueType, queue_priorities: &[f32]| {
                 let q_inds = find_queue_family(queue_type_map(queue_type));
                 let mut index = 0;
                 for i in q_inds {
@@ -696,18 +696,17 @@ impl VulkanResourceHandler {
                 queue_type_indices.push(index);
 
                 let device_queue_create_info = VkDeviceQueueCreateInfoBuilder::new()
-                    .queue_family_index(index)
-                    .queue_count(queue_count)
-                    .p_queue_priorities(&queue_priority)
+                .queue_family_index(index as u32)
+                .queue_count(queue_priorities.len() as u32)
+                .p_queue_priorities(queue_priorities.as_ptr())
                     .build();
                 device_queue_create_infos.push(device_queue_create_info);
             };
 
         // 3. real execute
-        let queue_priority = 0.9;
         demands
             .iter()
-            .for_each(|demand| process_queue_family(demand.0, demand.1, queue_priority));
+            .for_each(|demand| process_queue_family(demand.0, demand.1));
 
         // device
         let vk_khr_swapchain = b"VK_KHR_swapchain\0".as_ptr() as *const i8;
@@ -720,54 +719,57 @@ impl VulkanResourceHandler {
             .pp_enabled_extension_names(extensions.as_ptr())
             .build();
 
-        unsafe {
-            vk_assert(vkCreateDevice(
-                ctx.physical_devices[0],
-                &device_create_info,
-                null(),
-                &mut device,
-            ));
+        device = ctx.physical_devices[0].create_device(&device_create_info, None);
+
+        let mut command_pools: Vec<VkCommandPool> = vec![vk_instantiate!(VkCommandPool); 5];
+        for (queue_family, indices) in &queue_family_indices {
+            indices.iter().for_each(|i| {
+                let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
+                    .queue_family_index(*i)
+                    .build();
+                command_pools[*i as usize] =
+                    device.create_command_pool(&command_pool_create_info, None);
+            })
         }
 
         // command pool
-        let command_pools: HashMap<QueueType, VkCommandPool> = HashMap::new();
         let mut new_device = Self {
             device: device,
             queue_family_indices: queue_family_indices,
             command_pools: command_pools,
         };
-        new_device.new_command_pool();
+        // new_device.new_command_pool();
 
         new_device
     }
 
-    fn new_command_pool(&mut self) {
-        let command_pools: Vec<(QueueType, VkCommandPool)> = self
-            .queue_family_indices
-            .iter()
-            .map(|(queue_type, indices)| {
-                let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
-                    .queue_family_index(indices[0])
-                    .build();
-                let command_pool = self
-                    .device
-                    .create_command_pool(&command_pool_create_info, None);
-                // .unwrap();
-                // self.command_pools.insert(*queue_type, command_pool);
-                (*queue_type, command_pool)
-            })
-            .collect();
+    // fn new_command_pool(&mut self) {
+    //     let command_pools = self
+    //         .queue_family_indices
+    //         .iter()
+    //         .map(|(queue_family_index, indices)| {
+    //             let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
+    //                 .queue_family_index(indices[0])
+    //                 .build();
+    //             let command_pool = self
+    //                 .device
+    //                 .create_command_pool(&command_pool_create_info, None);
+    //             // .unwrap();
+    //             // self.command_pools.insert(*queue_type, command_pool);
+    //             (indices[0], command_pool)
+    //         })
+    //         .collect::<Vec<(u32, VkCommandPool)>>();
 
-        command_pools.iter().for_each(move |(queue_type, pool)| {
-            self.command_pools.insert(*queue_type, *pool);
-        });
-    }
+    //     // command_pools.iter().for_each(move |(u32, pool)| {
+    //     //     self.command_pools.insert(*queue_type, *pool);
+    //     // });
+    // }
 
     pub fn destroy(&mut self) {
         unsafe {
-            self.command_pools
-                .iter()
-                .for_each(|(t, commad_pool)| self.device.destroy_command_pool(*commad_pool, None));
+            // self.command_pools
+            //     .iter()
+            //     .for_each(|(t, commad_pool)| self.device.destroy_command_pool(*commad_pool, None));
             vkDestroyDevice(self.device, null());
         }
     }

@@ -254,7 +254,7 @@ struct GraphicsPipelineProperties {
     scissors: Vec<VkRect2D>,
     color_blend_attachments: Vec<VkPipelineColorBlendAttachmentState>,
     binding_description: Vec<VkVertexInputBindingDescription>,
-    attribute_descriptions: Vec<VkVertexInputAttributeDescription>
+    attribute_descriptions: Vec<VkVertexInputAttributeDescription>,
 }
 
 impl GraphicsPipelineProperties {
@@ -369,7 +369,7 @@ impl GraphicsPipelineProperties {
             scissors,
             color_blend_attachments,
             binding_description,
-            attribute_descriptions
+            attribute_descriptions,
         }
     }
 }
@@ -906,7 +906,7 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let handler = VulkanResourceHandler::new(&[(QueueType::graphics, 1)]);
+    let handler = VulkanResourceHandler::new(&[(QueueType::graphics, &[1.0])]);
     let mut app = App::new(&handler, &window);
 
     // non static event loop
