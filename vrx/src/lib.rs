@@ -816,61 +816,40 @@ impl VulkanResourceHandler {
     }
 
     //
-    // command buffer
-    pub fn allocate_command_buffer(
-        &self,
-        command_type: QueueType,
-        level: VkCommandBufferLevel,
-    ) -> Result<VkCommandBuffer> {
-        let mut cmd_buf = vk_instantiate!(VkCommandBuffer);
-
-        let info = VkCommandBufferAllocateInfo {
-            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            pNext: null(),
-            commandPool: *(self.command_pools.get(&command_type)).unwrap(),
-            level: level,
-            commandBufferCount: 1,
-        };
-        unsafe {
-            vk_assert(vkAllocateCommandBuffers(self.device, &info, &mut cmd_buf));
-        }
-        Ok(cmd_buf)
+    pub fn get_command_pool(&self, queue_type: &QueueType, index: usize) -> VkCommandPool {
+        self.command_pools[self.queue_family_indices.get(queue_type).unwrap()[index] as usize]
     }
 
+    //
+    // command buffer
     pub fn allocate_command_buffers(
         &self,
-        command_type: QueueType,
+        queue_type: &QueueType,
+        index: usize,
         level: VkCommandBufferLevel,
         count: u32,
-    ) -> Result<Vec<VkCommandBuffer>> {
-        let mut cmd_bufs = vec![vk_instantiate!(VkCommandBuffer); count as usize];
+    ) -> Vec<VkCommandBuffer> {
+        let command_pool = self.get_command_pool(queue_type, index);
 
         let info = VkCommandBufferAllocateInfoBuilder::new()
-            .command_pool(*self.command_pools.get(&command_type).unwrap())
+            .command_pool(command_pool)
             .level(level)
             .command_buffer_count(count)
             .build();
 
-        unsafe {
-            vk_assert(vkAllocateCommandBuffers(
-                self.device,
-                &info,
-                cmd_bufs.as_mut_ptr(),
-            ));
-        }
-        Ok(cmd_bufs)
+        self.device.allocate_command_buffers(&info)
     }
 
     pub fn free_commands_buffers(
         &self,
-        command_type: QueueType,
+        command_pool: VkCommandPool,
         command_buffer_count: u32,
         p_command_buffers: *const VkCommandBuffer,
     ) {
         unsafe {
             vkFreeCommandBuffers(
                 self.device,
-                *self.command_pools.get(&command_type).unwrap(),
+                command_pool,
                 command_buffer_count,
                 p_command_buffers,
             )
@@ -907,7 +886,7 @@ impl VulkanResourceHandler {
     }
 }
 
-pub trait Memory {
+pub trait MemoryFunctions {
     // trait getter
     fn device(&self) -> &VkDevice;
     fn buffer(&self) -> Option<&VkBuffer> {
@@ -927,56 +906,14 @@ pub trait Memory {
 
     /// functional
     fn get_memory_requirements(&self) -> VkMemoryRequirements;
-    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
-        let ctx = vulkan_context();
-
-        let mut mem_prop = ctx.get_physical_device_memory_properties();
-        let mut collect: Vec<u32> = (0..mem_prop.memoryTypeCount).collect();
-        collect.retain(|i| {
-            mem_prop.memoryTypes[*i as usize].propertyFlags
-                & mem_prop_flags as VkMemoryPropertyFlags
-                == mem_prop_flags as VkMemoryPropertyFlags
-        });
-
-        let mut mem_req = self.get_memory_requirements();
-        let mut mem_alloc_info = VkMemoryAllocateInfo {
-            sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            pNext: null(),
-            allocationSize: mem_req.size,
-            memoryTypeIndex: collect[0],
-        };
-
-        unsafe {
-            vk_assert(vkAllocateMemory(
-                *self.device(),
-                &mut mem_alloc_info,
-                null(),
-                self.memory_mut(),
-            ));
-        }
-    }
+    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits);
 
     fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<*mut c_void> {
-        unsafe {
-            let mut mapped = MaybeUninit::<*mut c_void>::uninit();
-
-            vk_assert(vkMapMemory(
-                *self.device(),
-                *self.memory(),
-                offset,
-                size,
-                flags,
-                mapped.as_mut_ptr(),
-            ));
-
-            Ok(mapped.assume_init())
-        }
+        self.device().map_memory(offset, size, flags, self.memory())
     }
 
     fn unmap_memory(&self) {
-        unsafe {
-            vkUnmapMemory(*self.device(), *self.memory());
-        }
+        self.device().unmap_memory(self.memory());
     }
 
     fn free_memory(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
@@ -1023,7 +960,7 @@ pub struct VxBuffer<'a, T> {
     len: u32,
 }
 
-impl<'a, T> Memory for VxBuffer<'a, T> {
+impl<'a, T> MemoryFunctions for VxBuffer<'a, T> {
     fn device(&self) -> &VkDevice {
         self.device
     }
