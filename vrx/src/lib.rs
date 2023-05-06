@@ -838,7 +838,7 @@ impl VulkanResourceHandler {
     //
     pub fn create_vxbuffer<'a, T>(
         &'a self,
-        data: *const T,
+        data: Option<*const T>,
         len: u32,
         usage: VkBufferUsageFlagBits,
         flags: VkBufferCreateFlags,
@@ -894,13 +894,7 @@ pub trait MemoryFunctions {
     }
 
     fn free_memory(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
-        unsafe {
-            if let Some(p) = p_allocator {
-                vkFreeMemory(*self.device(), *self.memory(), p);
-            } else {
-                vkFreeMemory(*self.device(), *self.memory(), null());
-            }
-        }
+        self.device().free_memory(self.memory(), p_allocator);
     }
 
     fn flush_mapped_memory_range(
@@ -933,7 +927,7 @@ pub struct VxBuffer<'a, T> {
     pub buffer: VkBuffer,
     memory: VkDeviceMemory,
 
-    data: *const T,
+    data: Option<*const T>,
     len: u32,
 }
 
@@ -995,9 +989,17 @@ impl<'a, T> MemoryFunctions for VxBuffer<'a, T> {
     }
 }
 
+impl<'a, T> Drop for VxBuffer<'a, T> {
+    fn drop(&mut self) {
+        unsafe {
+            self.destroy(None);
+        }
+    }
+}
+
 impl<'a, T> VxBuffer<'a, T> {
     pub fn new(
-        data: *const T,
+        data: Option<*const T>,
         len: u32,
         flags: VkBufferCreateFlags,
         usage: VkBufferUsageFlags,
@@ -1006,17 +1008,12 @@ impl<'a, T> VxBuffer<'a, T> {
     ) -> Self {
         let mem = vk_instantiate!(VkDeviceMemory);
 
-        let info = VkBufferCreateInfo {
-            sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            pNext: null(),
-            flags: flags,
-            size: (len * size_of::<T>() as u32) as u64,
-            usage: usage,
-            sharingMode: VK_SHARING_MODE_EXCLUSIVE,
-            queueFamilyIndexCount: 0,    // no working here
-            pQueueFamilyIndices: null(), // no working here
-        };
-
+        let info = VkBufferCreateInfoBuilder::new()
+            .flags(flags)
+            .size((len * size_of::<T>() as u32) as u64)
+            .usage(usage)
+            .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
+            .build();
         let buf = device.create_buffer(&info, None);
 
         let mut buffer = Self {
@@ -1045,10 +1042,16 @@ impl<'a, T> VxBuffer<'a, T> {
         &self.buffer
     }
 
+    pub fn destroy(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
+        self.device.destroy_buffer(self.buffer, p_allocator);
+        self.device.free_memory(self.memory(), p_allocator);
+    }
+
+    // mappings
     pub fn map_to_gpu_and_unmap(&self) {
         let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
         unsafe {
-            copy_nonoverlapping(self.data, mapped.cast(), self.len as usize);
+            copy_nonoverlapping(self.data.unwrap(), mapped.cast(), self.len as usize);
         }
         self.unmap_memory();
     }
@@ -1138,12 +1141,10 @@ impl<'a> MemoryFunctions for Texture<'a> {
         });
 
         let mut mem_req = self.get_memory_requirements();
-        let mut mem_alloc_info = VkMemoryAllocateInfo {
-            sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            pNext: null(),
-            allocationSize: mem_req.size,
-            memoryTypeIndex: collect[0],
-        };
+        let mut mem_alloc_info = VkMemoryAllocateInfoBuilder::new()
+            .allocation_size(mem_req.size)
+            .memory_type_index(collect[0])
+            .build();
 
         self.memory = self.device().allocate_memory(&mem_alloc_info, None);
     }

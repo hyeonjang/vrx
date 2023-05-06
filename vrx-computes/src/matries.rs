@@ -82,7 +82,7 @@ where
         let len = shape.0 * shape.1;
         let mut out_buffer = handler
             .create_vxbuffer(
-                &mut out_values[0][0],
+                Some(&mut out_values[0][0]),
                 len as u32,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
                     | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
