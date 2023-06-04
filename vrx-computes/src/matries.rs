@@ -110,9 +110,9 @@ where
             .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
             .build();
 
-        let out_image = handler
-            .create_texture(image_create_info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-            .unwrap();
+        // let out_image = handler
+        //     .create_texture(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+        //     .unwrap();
 
         // let cmd = device
         //     .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
@@ -160,39 +160,38 @@ where
 
         //
         // construct compute pipeline
-        //
+        // //
         let buffer_descriptor = VkDescriptorBufferInfo {
             buffer: *out_buffer.buffer(),
             offset: 0,
             range: out_buffer.vksize(),
         };
 
-        let sampler_create_info = VkSamplerCreateInfoBuilder::new().build();
+        // let sampler_create_info = VkSamplerCreateInfoBuilder::new().build();
+        // let sampler = device.create_sampler(&sampler_create_info, None);
 
-        let sampler = device.create_sampler(&sampler_create_info, None);
+        // let image_view_create_info = VkImageViewCreateInfoBuilder::new()
+        //     .image(*out_image.image())
+        //     .view_type(VK_IMAGE_VIEW_TYPE_2D)
+        //     .format(VK_FORMAT_R32_SFLOAT)
+        //     .subresource_range(VkImageSubresourceRange {
+        //         aspectMask: VK_IMAGE_ASPECT_COLOR_BIT as u32,
+        //         baseMipLevel: 0,
+        //         levelCount: 1,
+        //         baseArrayLayer: 0,
+        //         layerCount: 1,
+        //     })
+        //     .build();
 
-        let image_view_create_info = VkImageViewCreateInfoBuilder::new()
-            .image(*out_image.image())
-            .view_type(VK_IMAGE_VIEW_TYPE_2D)
-            .format(VK_FORMAT_R32_SFLOAT)
-            .subresource_range(VkImageSubresourceRange {
-                aspectMask: VK_IMAGE_ASPECT_COLOR_BIT as u32,
-                baseMipLevel: 0,
-                levelCount: 1,
-                baseArrayLayer: 0,
-                layerCount: 1,
-            })
-            .build();
+        // let image_view = device.create_image_view(&image_view_create_info, None);
 
-        let image_view = device.create_image_view(&image_view_create_info, None);
+        // let image_descriptor = VkDescriptorImageInfo {
+        //     sampler: sampler,
+        //     imageView: image_view,
+        //     imageLayout: 0,
+        // };
 
-        let image_descriptor = VkDescriptorImageInfo {
-            sampler: sampler,
-            imageView: image_view,
-            imageLayout: 0,
-        };
-
-        let layout_bindings = vec![
+        let layout_bindings = &[
             VkDescriptorSetLayoutBinding {
                 binding: 0,
                 descriptorType: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -226,27 +225,18 @@ where
             .p_pool_sizes(pool_sizes.as_ptr())
             .build();
 
-        let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_create_info, None);
+        let mut descriptor = handler.create_descriptor(pool_sizes.as_slice()).unwrap();
 
-        let descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfoBuilder::new()
+        let desc_set_layout_create_info = VkDescriptorSetLayoutCreateInfoBuilder::new()
             .binding_count(layout_bindings.len() as u32)
             .p_bindings(layout_bindings.as_ptr())
             .build();
+        
+        descriptor.create_set_layouts(&[desc_set_layout_create_info]);
+        descriptor.allocate_sets(1);
+        let descriptor_sets = descriptor.sets.as_ref().unwrap();
 
-        let descriptor_set_layout =
-            device.create_descriptor_set_layout(&descriptor_set_layout_create_info, None);
-
-        let descriptor_set_alloc_info = VkDescriptorSetAllocateInfoBuilder::new()
-            .descriptor_pool(descriptor_pool)
-            .descriptor_set_count(1)
-            .p_set_layouts(&descriptor_set_layout)
-            .build();
-
-        let descriptor_sets = handler
-            .allocate_descriptor_sets(&descriptor_set_alloc_info)
-            .unwrap();
-
-        let write_desc_sets = vec![
+        let write_desc_sets = &[
             VkWriteDescriptorSetBuilder::new()
                 .dst_set(descriptor_sets[0])
                 .dst_binding(0)
@@ -261,7 +251,7 @@ where
             //     .pImageInfo(&image_descriptor)
             //     .build(),
         ];
-        handler.update_descriptor_sets(write_desc_sets.len(), write_desc_sets.as_ptr());
+        descriptor.update(write_desc_sets);
 
         // compute pipeline
         let name = CString::new("main").unwrap();
@@ -279,7 +269,7 @@ where
             .push_constant_range_count(1)
             .p_push_constant_ranges(&input_constant.range())
             .set_layout_count(1)
-            .p_set_layouts(&descriptor_set_layout)
+            .p_set_layouts(descriptor.set_layouts.as_ref().unwrap().as_ptr())
             .build();
 
         let pipeline_layout = device.create_pipeline_layout(&pipeline_layout_create_info, None);
@@ -288,7 +278,7 @@ where
             .stage(VK_SHADER_STAGE_COMPUTE_BIT)
             .module(device.create_shader_module(COMP_SPV, None))
             .p_name(ref_name.as_ptr() as *const i8)
-            .p_specialization_info(&spec_info)
+            // .p_specialization_info(&spec_info)
             .build();
 
         let compute_pipeline_create_info = VkComputePipelineCreateInfoBuilder::new()

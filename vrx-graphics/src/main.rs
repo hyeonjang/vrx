@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 extern crate winit;
 use anyhow::{anyhow, Result};
 use paste::paste;
@@ -397,15 +399,16 @@ impl<'a> GraphicsPipeline<'a> {
     fn new(
         device: &'a VkDevice,
         presentation: &Presentation,
-        shader_stages: &ShaderModules,
         properties: &GraphicsPipelineProperties,
+        shader_stages: &ShaderModules,
+        set_layouts: &[VkDescriptorSetLayout]
     ) -> Self {
         let mut instance = Self::default();
         instance.set_device(device);
 
         // real create
         instance.create_render_pass(presentation);
-        instance.create_pipeline_layout();
+        instance.create_pipeline_layout(set_layouts);
         instance.create_pipeline(shader_stages, properties);
 
         instance
@@ -479,8 +482,11 @@ impl<'a> GraphicsPipeline<'a> {
             .create_render_pass(&render_pass_create_info, None);
     }
 
-    fn create_pipeline_layout(&mut self) {
-        let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new().build();
+    fn create_pipeline_layout(&mut self, set_layouts: &[VkDescriptorSetLayout]) {
+        let pipeline_layout_create_info = VkPipelineLayoutCreateInfoBuilder::new()
+            .set_layout_count(set_layouts.len() as u32)
+            .p_set_layouts(set_layouts.as_ptr())
+            .build();
         self.pipeline_layout = self
             .device
             .unwrap()
@@ -580,7 +586,19 @@ lazy_static! {
     ];
 }
 
+use shader::bind;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct UniformBufferObject {
+    model: glm::Mat4,
+    view: glm::Mat4,
+    proj: glm::Mat4,
+}
+
 struct App<'a> {
+    start: std::time::Instant,
+
     presentation: Presentation<'a>,
     shader_stages: ShaderModules<'a>,
     graphics_pipeline_properties: GraphicsPipelineProperties,
@@ -596,6 +614,9 @@ struct App<'a> {
 
     vertex_buffer: VxBuffer<'a, Vertex>,
     index_buffer: VxBuffer<'a, u16>,
+    uniform_buffer: VxBuffer<'a, UniformBufferObject>,
+
+    descriptor: Descriptor<'a>,
 
     handler: &'a VulkanResourceHandler,
 }
@@ -615,12 +636,38 @@ impl<'a> App<'a> {
                 .unwrap(),
             window,
         );
+
+        let desc_pool_size = VkDescriptorPoolSizeBuilder::new()
+            .type_(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+            .descriptor_count(2)
+            .build();
+
+        let desc_pool_sizes = &[desc_pool_size];
+        let mut descriptor = handler.create_descriptor(desc_pool_sizes).unwrap();
+
+        let binding = VkDescriptorSetLayoutBindingBuilder::new()
+            .binding(0)
+            .descriptor_type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(VK_SHADER_STAGE_VERTEX_BIT as u32)
+            .build();
+
+        let bindings = &[binding];
+        let desc_layout_info = VkDescriptorSetLayoutCreateInfoBuilder::new()
+            .binding_count(bindings.len() as u32)
+            .p_bindings(bindings.as_ptr())
+            .build();
+
+        let desc_layout_infos = &[desc_layout_info];
+        descriptor.create_set_layouts(desc_layout_infos);
+
         let graphics_pipeline_properties = GraphicsPipelineProperties::new(&presentation);
         let graphics_pipeline = GraphicsPipeline::new(
             &handler.device,
             &presentation,
-            &shader_stages,
             &graphics_pipeline_properties,
+            &shader_stages,
+            descriptor.set_layouts.as_ref().unwrap().as_slice()
         );
 
         let vertex_buffer = handler
@@ -636,14 +683,25 @@ impl<'a> App<'a> {
         let index_buffer = handler
             .create_vxbuffer(
                 None,
-                INDICES.len() as u32,
+                (std::mem::size_of::<UniformBufferObject>() * 3) as u32,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                 VK_SHARING_MODE_EXCLUSIVE as u32,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             )
             .unwrap();
 
+        let uniform_buffer: VxBuffer<UniformBufferObject> = handler.
+            create_vxbuffer(
+                None,
+                std::mem::size_of::<UniformBufferObject>() as u32,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_SHARING_MODE_EXCLUSIVE as u32,
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+            ).unwrap();
+
+
         let mut app = Self {
+            start: std::time::Instant::now(),
             handler: handler,
             shader_stages: shader_stages,
             presentation: presentation,
@@ -659,11 +717,14 @@ impl<'a> App<'a> {
             resized: false,
             vertex_buffer: vertex_buffer,
             index_buffer: index_buffer,
+            uniform_buffer: uniform_buffer,
+            descriptor: descriptor,
         };
 
         app.create_framebuffers();
         app.create_vertex_buffer();
         app.create_index_buffer();
+        app.create_and_update_descriptor_set();
         app.create_command_buffers();
         app.create_sync_objects();
 
@@ -671,6 +732,8 @@ impl<'a> App<'a> {
     }
 
     pub fn render(&mut self, window: &Window) -> Result<()> {
+
+
         // syn cpu gpu
         let device = &self.handler.device;
         let in_flight_fence = self.in_flight_fences[self.frame];
@@ -695,6 +758,8 @@ impl<'a> App<'a> {
             device.wait_for_fence(&[image_in_flight], true, u64::MAX);
         }
         self.images_in_flight[image_index as usize] = in_flight_fence;
+
+        self.update_uniform_buffers();
 
         let wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT as u32;
         let wait_semaphores = &[self.image_available_semaphores[self.frame]];
@@ -846,6 +911,57 @@ impl<'a> App<'a> {
         queue.queue_wait_idle();
     }
 
+    fn create_and_update_descriptor_set(&mut self) {
+
+        self.descriptor.allocate_sets(1);
+
+        // Update
+        let buffer_info = VkDescriptorBufferInfoBuilder::new()
+            .buffer(self.uniform_buffer.buffer)
+            .offset(0)
+            .range(std::mem::size_of::<UniformBufferObject>() as u64)
+            .build();
+
+        let ubo_write = VkWriteDescriptorSetBuilder::new()
+            .dst_set(self.descriptor.sets.as_ref().unwrap()[0])
+            .dst_binding(0)
+            .dst_array_element(0)
+            .descriptor_count(1)
+            .descriptor_type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+            .p_buffer_info(&buffer_info)
+            .build();
+
+        self.descriptor.update(&[ubo_write]);
+    }
+
+    fn update_uniform_buffers(&mut self) {
+        let time = self.start.elapsed().as_secs_f32();
+
+        let model = glm::rotate(
+            &glm::identity(),
+            time * glm::radians(&glm::vec1(90.0))[0],
+            &glm::vec3(0.0, 0.0, 1.0),
+        );
+
+        let view = glm::look_at(
+            &glm::vec3(2.0, 2.0, 2.0),
+            &glm::vec3(0.0, 0.0, 0.0),
+            &glm::vec3(0.0, 0.0, 1.0),
+        );
+
+        let mut proj = glm::perspective(
+            self.presentation.extent.width as f32 / self.presentation.extent.height as f32,
+            glm::radians(&glm::vec1(45.0))[0],
+            0.1,
+            10.0,
+        );
+
+        proj[(1, 1)] *= -1.0;
+
+        let ubo = UniformBufferObject { model, view, proj };
+        self.uniform_buffer.map(1, &ubo);
+    }
+
     fn create_framebuffers(&mut self) {
         let device = &self.handler.device;
 
@@ -896,6 +1012,7 @@ impl<'a> App<'a> {
                 BIND_PIPELINE(
                     VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline
                 );
+                BIND_DESCRIPTOR_SETS(VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline_layout, 0, 1, &self.descriptor.sets.as_ref().unwrap()[0], 0, &0);
                 BIND_VERTEX_BUFFERS(0, 1, &self.vertex_buffer.buffer, (&[0]).as_ptr());
                 BIND_INDEX_BUFFER(self.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
                 DRAW_INDEXED(INDICES.len() as u32, 1, 0, 0, 0);
@@ -950,8 +1067,9 @@ impl<'a> App<'a> {
         self.graphics_pipeline = GraphicsPipeline::new(
             &device,
             &self.presentation,
-            &self.shader_stages,
             &self.graphics_pipeline_properties,
+            &self.shader_stages,
+            &self.descriptor.set_layouts.as_ref().unwrap().as_slice()
         );
 
         self.create_framebuffers();
