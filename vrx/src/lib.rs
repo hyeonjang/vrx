@@ -3,12 +3,23 @@
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-use paste::paste;
 use std::any::{type_name, Any};
 
-include!("vk_traits.rs");
+include!("vkstruct.rs");
+include!("vktraits.rs");
 
-pub mod graphics;
+pub fn vk_assert(result: VkResult) {
+    assert!(result == VkResult::VK_SUCCESS, "VkResult: {:?}", result);
+}
+
+pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
+    (major << 22) | (minor << 12) | patch
+}
+
+#[macro_use]
+pub mod func_static {
+
+use paste::paste;
 
 #[macro_export]
 macro_rules! load_spv {
@@ -19,22 +30,15 @@ macro_rules! load_spv {
 
 #[macro_export]
 macro_rules! vk_instantiate {
+
     ( $x:ident ) => {{
-        paste! {
+        paste::paste! {
             let mut type_T = [<$x _T>]::default();
             let mut type_inst : *mut [<$x _T>] = &mut type_T;
         }
 
         type_inst
     }};
-}
-
-pub fn vk_assert(result: VkResult) {
-    assert!(result == VkResult::VK_SUCCESS, "VkResult: {:?}", result);
-}
-
-pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
-    (major << 22) | (minor << 12) | patch
 }
 
 ///
@@ -266,6 +270,20 @@ macro_rules! vkCmdBlock {
         inner!($function($($args),*));
     };
 }
+
+#[macro_export]
+macro_rules! vkMakeBind {
+    () => {};
+}
+
+pub use vk_instantiate;
+pub use vkCmdBlock;
+pub use vkMakeBind;
+
+} // the end of module
+
+pub mod memory;
+pub use memory::*;
 
 //
 // higher-level wrapper
@@ -661,12 +679,12 @@ impl SwapchainSupport {
     }
 }
 
+
 #[derive(Debug)]
 pub struct VulkanResourceHandler {
     pub device: VkDevice,
     pub queue_family_indices: HashMap<QueueType, Vec<u32>>, // Vec<u32> map to command pools
-    pub command_pools: Vec<VkCommandPool>, // command pools per queue family indices
-                                           // pub descriptor_pools
+    pub command_pools: Vec<VkCommandPool>,                  // command pools per queue family indices
 }
 
 impl VulkanResourceHandler {
@@ -778,47 +796,6 @@ impl VulkanResourceHandler {
         }
     }
 
-    pub fn allocate_descriptor_sets(
-        &self,
-        descriptor_set_alloc_info: &VkDescriptorSetAllocateInfo,
-    ) -> Result<Vec<VkDescriptorSet>> {
-        let mut descriptor_sets = vec![
-            vk_instantiate!(VkDescriptorSet);
-            descriptor_set_alloc_info.descriptorSetCount as usize
-        ];
-
-        unsafe {
-            vkAllocateDescriptorSets(
-                self.device,
-                descriptor_set_alloc_info,
-                descriptor_sets.as_mut_ptr(),
-            );
-        }
-        Ok(descriptor_sets)
-    }
-
-    pub fn update_descriptor_sets(
-        &self,
-        descriptor_write_count: usize,
-        p_descriptor_writes: *const VkWriteDescriptorSet,
-    ) {
-        unsafe {
-            vkUpdateDescriptorSets(
-                self.device,
-                descriptor_write_count as u32,
-                p_descriptor_writes,
-                0,
-                null(),
-            );
-        }
-    }
-
-    //
-    // descriptor
-    pub fn create_descriptor(&self, set_count: u32) -> Result<Descriptor> {
-        Ok(Descriptor::new(set_count, &self.device))
-    }
-
     //
     pub fn get_command_pool(&self, queue_type: &QueueType, index: usize) -> VkCommandPool {
         self.command_pools[self.queue_family_indices.get(queue_type).unwrap()[index] as usize]
@@ -863,6 +840,12 @@ impl VulkanResourceHandler {
     //
     // high level api
     //
+    // descriptor
+    pub fn create_descriptor(&self, descriptor_pool_sizes: &[VkDescriptorPoolSize]) -> anyhow::Result<Descriptor> {
+        Ok(Descriptor::new(descriptor_pool_sizes, &self.device))
+    }
+
+    // buffer
     pub fn create_vxbuffer<'a, T>(
         &'a self,
         data: Option<*const T>,
@@ -870,7 +853,7 @@ impl VulkanResourceHandler {
         usage: VkBufferUsageFlagBits,
         flags: VkBufferCreateFlags,
         mem_prop_flags: VkMemoryPropertyFlagBits,
-    ) -> Result<VxBuffer<T>> {
+    ) -> anyhow::Result<VxBuffer<T>> {
         Ok(VxBuffer::<T>::new(
             data,
             len,
@@ -881,497 +864,17 @@ impl VulkanResourceHandler {
         ))
     }
 
+    // Textures
+    // raw texture
     pub fn create_texture<'a>(
         &'a self,
-        image_create_info: VkImageCreateInfo,
         mem_prop_info: VkMemoryPropertyFlagBits,
-    ) -> Result<Texture> {
-        Ok(Texture::new(image_create_info, mem_prop_info, &self.device))
-    }
-}
-
-pub trait MemoryFunctions {
-    // trait getter
-    fn device(&self) -> &VkDevice;
-    fn buffer(&self) -> Option<&VkBuffer> {
-        None
-    }
-    fn buffer_mut(&mut self) -> Option<&mut VkBuffer> {
-        None
-    }
-    fn image(&self) -> Option<&VkImage> {
-        None
-    }
-    fn image_mut(&mut self) -> Option<&mut VkImage> {
-        None
-    }
-    fn memory(&self) -> &VkDeviceMemory;
-    fn memory_mut(&mut self) -> &mut VkDeviceMemory;
-
-    /// functional
-    fn get_memory_requirements(&self) -> VkMemoryRequirements;
-    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits);
-
-    fn map_memory(&self, offset: u64, size: u64, flags: u32) -> Result<*mut c_void> {
-        self.device().map_memory(offset, size, flags, self.memory())
+    ) -> anyhow::Result<Texture> {
+        Ok(Texture::new(mem_prop_info, &self.device))
     }
 
-    fn unmap_memory(&self) {
-        self.device().unmap_memory(self.memory());
-    }
-
-    fn free_memory(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
-        self.device().free_memory(self.memory(), p_allocator);
-    }
-
-    fn flush_mapped_memory_range(
-        &self,
-        memory_range_count: u32,
-        p_memory_ranges: *const VkMappedMemoryRange,
-    ) {
-        unsafe {
-            vkFlushMappedMemoryRanges(*self.device(), memory_range_count, p_memory_ranges);
-        }
-    }
-
-    fn invalidate_mapped_memory_ranges(
-        &self,
-        memory_range_count: u32,
-        p_memory_ranges: *const VkMappedMemoryRange,
-    ) {
-        unsafe {
-            vkInvalidateMappedMemoryRanges(*self.device(), memory_range_count, p_memory_ranges);
-        }
-    }
-    fn bind_buffer_memory(&self, offset: VkDeviceSize) {}
-    fn bind_image_memory(&self, offset: VkDeviceSize) {}
-}
-
-#[derive(Debug)]
-pub struct VxBuffer<'a, T> {
-    device: &'a VkDevice,
-
-    pub buffer: VkBuffer,
-    memory: VkDeviceMemory,
-
-    data: Option<*const T>,
-    len: u32,
-}
-
-impl<'a, T> MemoryFunctions for VxBuffer<'a, T> {
-    fn device(&self) -> &VkDevice {
-        self.device
-    }
-
-    fn buffer(&self) -> Option<&VkBuffer> {
-        Some(&self.buffer)
-    }
-
-    fn buffer_mut(&mut self) -> Option<&mut VkBuffer> {
-        Some(&mut self.buffer)
-    }
-
-    fn memory(&self) -> &VkDeviceMemory {
-        &self.memory
-    }
-
-    fn memory_mut(&mut self) -> &mut VkDeviceMemory {
-        &mut self.memory
-    }
-
-    fn get_memory_requirements(&self) -> VkMemoryRequirements {
-        self.device.get_buffer_memory_requirements(self.buffer)
-    }
-
-    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
-        let ctx = vulkan_context();
-
-        //@@ to static
-        let mut mem_prop = ctx.get_physical_device_memory_properties();
-        let mut collect: Vec<u32> = (0..mem_prop.memoryTypeCount).collect();
-        collect.retain(|i| {
-            mem_prop.memoryTypes[*i as usize].propertyFlags
-                & mem_prop_flags as VkMemoryPropertyFlags
-                == mem_prop_flags as VkMemoryPropertyFlags
-        });
-
-        let mut mem_req = self.get_memory_requirements();
-        let mut mem_alloc_info = VkMemoryAllocateInfoBuilder::new()
-            .allocation_size(mem_req.size)
-            .memory_type_index(collect[0])
-            .build();
-
-        self.memory = self.device().allocate_memory(&mem_alloc_info, None);
-    }
-
-    fn bind_buffer_memory(&self, offset: VkDeviceSize) {
-        unsafe {
-            vk_assert(vkBindBufferMemory(
-                *self.device,
-                self.buffer,
-                self.memory,
-                offset,
-            ));
-        }
-    }
-}
-
-impl<'a, T> Drop for VxBuffer<'a, T> {
-    fn drop(&mut self) {
-        unsafe {
-            self.destroy(None);
-        }
-    }
-}
-
-impl<'a, T> VxBuffer<'a, T> {
-    pub fn new(
-        data: Option<*const T>,
-        len: u32,
-        flags: VkBufferCreateFlags,
-        usage: VkBufferUsageFlags,
-        mem_prop_flags: VkMemoryPropertyFlagBits,
-        device: &'a VkDevice,
-    ) -> Self {
-        let mem = vk_instantiate!(VkDeviceMemory);
-
-        let info = VkBufferCreateInfoBuilder::new()
-            .flags(flags)
-            .size((len * size_of::<T>() as u32) as u64)
-            .usage(usage)
-            .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
-            .build();
-        let buf = device.create_buffer(&info, None);
-
-        let mut buffer = Self {
-            buffer: buf,
-            memory: mem,
-            data: data,
-            len: len,
-            device: device,
-        };
-
-        buffer.allocate_memory(mem_prop_flags);
-        buffer.bind_buffer_memory(0);
-
-        buffer
-    }
-
-    pub fn buffer(&self) -> &VkBuffer {
-        &self.buffer
-    }
-
-    pub fn destroy(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
-        self.device.destroy_buffer(self.buffer, p_allocator);
-        self.device.free_memory(self.memory(), p_allocator);
-    }
-
-    // mappings
-    pub fn map_to_gpu_and_unmap(&self) {
-        let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
-        unsafe {
-            copy_nonoverlapping(self.data.unwrap(), mapped.cast(), self.len as usize);
-        }
-        self.unmap_memory();
-    }
-
-    pub fn map_to_cpu_and_unmap(&mut self) -> Vec<T>
-    where
-        T: std::clone::Clone + Default,
-    {
-        let mut output = vec![T::default(); self.len as usize];
-
-        let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
-        unsafe {
-            copy_nonoverlapping(mapped.cast(), output.as_mut_ptr(), self.len as usize);
-        }
-        self.unmap_memory();
-
-        output
-    }
-
-    pub fn vksize(&self) -> VkDeviceSize {
-        (self.len * size_of::<T>() as u32) as VkDeviceSize
-    }
-}
-
-pub struct Texture<'a> {
-    device: &'a VkDevice,
-
-    image: VkImage,
-    memory: VkDeviceMemory,
-
-    info: VkImageCreateInfo,
-}
-
-impl<'a> MemoryFunctions for Texture<'a> {
-    fn device(&self) -> &VkDevice {
-        self.device
-    }
-
-    fn image(&self) -> Option<&VkImage> {
-        Some(&self.image)
-    }
-
-    fn image_mut(&mut self) -> Option<&mut VkImage> {
-        Some(&mut self.image)
-    }
-
-    fn memory(&self) -> &VkDeviceMemory {
-        &self.memory
-    }
-
-    fn memory_mut(&mut self) -> &mut VkDeviceMemory {
-        &mut self.memory
-    }
-
-    fn get_memory_requirements(&self) -> VkMemoryRequirements {
-        unsafe {
-            let mut mem_req = VkMemoryRequirements {
-                size: 0,
-                alignment: 0,
-                memoryTypeBits: 0,
-            };
-            vkGetImageMemoryRequirements(*self.device(), *self.image(), &mut mem_req);
-
-            mem_req
-        }
-    }
-
-    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
-        let ctx = vulkan_context();
-
-        let mut mem_prop = ctx.get_physical_device_memory_properties();
-        let mut collect: Vec<u32> = (0..mem_prop.memoryTypeCount).collect();
-        collect.retain(|i| {
-            mem_prop.memoryTypes[*i as usize].propertyFlags
-                & mem_prop_flags as VkMemoryPropertyFlags
-                == mem_prop_flags as VkMemoryPropertyFlags
-        });
-
-        let mut mem_req = self.get_memory_requirements();
-        let mut mem_alloc_info = VkMemoryAllocateInfoBuilder::new()
-            .allocation_size(mem_req.size)
-            .memory_type_index(collect[0])
-            .build();
-
-        self.memory = self.device().allocate_memory(&mem_alloc_info, None);
-    }
-
-    fn bind_buffer_memory(&self, offset: VkDeviceSize) {
-        unimplemented!();
-    }
-    fn bind_image_memory(&self, offset: VkDeviceSize) {
-        unsafe {
-            vk_assert(vkBindImageMemory(
-                *self.device,
-                self.image,
-                self.memory,
-                offset,
-            ));
-        }
-    }
-}
-
-impl<'a> Texture<'a> {
-    pub fn new(
-        info: VkImageCreateInfo,
-        mem_prop_flags: VkMemoryPropertyFlagBits,
-        device: &'a VkDevice,
-    ) -> Self {
-        let mut image = vk_instantiate!(VkImage);
-        unsafe {
-            vk_assert(vkCreateImage(*device, &info, null(), &mut image));
-        }
-
-        let memory = vk_instantiate!(VkDeviceMemory);
-        let mut vximage = Self {
-            device: device,
-            image: image,
-            memory: memory,
-            info: info,
-        };
-
-        vximage.allocate_memory(mem_prop_flags);
-        vximage.bind_image_memory(0);
-
-        vximage
-    }
-
-    pub fn image(&self) -> &VkImage {
-        &self.image
-    }
-
-    pub fn create_image_view(&self) -> VkImageView {
-        let mut image_view = vk_instantiate!(VkImageView);
-        let image_view_create_info = VkImageViewCreateInfo {
-            sType: todo!(),
-            pNext: todo!(),
-            flags: todo!(),
-            image: self.image,
-            viewType: todo!(),
-            format: self.info.format,
-            components: todo!(),
-            subresourceRange: todo!(),
-        };
-
-        unsafe {
-            vkCreateImageView(
-                *self.device,
-                &image_view_create_info,
-                null(),
-                &mut image_view,
-            );
-        }
-
-        image_view
-    }
-
-    pub fn get_image_sub_resource_layers(&self) {}
-}
-
-pub struct PushConstant<T> {
-    stage: VkShaderStageFlags,
-    data: *const T,
-    size: u32,
-}
-
-impl<T> PushConstant<T> {
-    pub fn new(stage: VkShaderStageFlagBits, data: *const T, size: u32) -> Self {
-        Self {
-            stage: stage as u32,
-            data: data,
-            size: size,
-        }
-    }
-
-    pub fn vksize(&self) -> u32 {
-        (self.size * size_of::<T>() as u32) as u32
-    }
-
-    pub fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.data as *const std::os::raw::c_void
-    }
-
-    pub fn stage(&self) -> VkShaderStageFlags {
-        self.stage
-    }
-
-    pub fn range(&self) -> VkPushConstantRange {
-        VkPushConstantRange {
-            stageFlags: self.stage,
-            offset: 0,
-            size: self.vksize(),
-        }
-    }
-
-    pub fn range_custom(&self, offset: u32, size: u32) -> VkPushConstantRange {
-        VkPushConstantRange {
-            stageFlags: self.stage,
-            offset: offset,
-            size: size,
-        }
-    }
-}
-
-// @@todo redesign
-pub struct Descriptor<'a> {
-    device: &'a VkDevice,
-    pool: VkDescriptorPool,
-    pub sets: Vec<VkDescriptorSet>,
-    pub set_layouts: Vec<VkDescriptorSetLayout>,
-    pub count: u32,
-}
-
-impl<'a> Descriptor<'a> {
-    pub fn new(count: u32, device: &'a VkDevice) -> Self {
-        let mut pool = vk_instantiate!(VkDescriptorPool);
-        let mut set_layout = vk_instantiate!(VkDescriptorSetLayout);
-        let mut sets = vec![vk_instantiate!(VkDescriptorSet); count as usize];
-        let mut set_layouts = vec![vk_instantiate!(VkDescriptorSetLayout); count as usize];
-
-        // descriptor pool
-        unsafe {
-            let desc_pool_size = VkDescriptorPoolSize {
-                type_: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                descriptorCount: count,
-            };
-
-            let desc_pool_create_info = VkDescriptorPoolCreateInfo {
-                sType: VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                pNext: null(),
-                flags: 0,
-                maxSets: 1,
-                poolSizeCount: 1,
-                pPoolSizes: &desc_pool_size,
-            };
-            vk_assert(vkCreateDescriptorPool(
-                *device,
-                &desc_pool_create_info,
-                null(),
-                &mut pool,
-            ));
-        }
-
-        // descriptor layout
-        unsafe {
-            let desc_set_layout_binding = VkDescriptorSetLayoutBinding {
-                binding: 0,
-                descriptorType: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                descriptorCount: count,
-                stageFlags: VK_SHADER_STAGE_COMPUTE_BIT as u32,
-                pImmutableSamplers: null(),
-            };
-
-            let desc_set_layout_create_info = VkDescriptorSetLayoutCreateInfo {
-                sType: VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                pNext: null(),
-                flags: 0,
-                bindingCount: 1,
-                pBindings: &desc_set_layout_binding,
-            };
-            vk_assert(vkCreateDescriptorSetLayout(
-                *device,
-                &desc_set_layout_create_info,
-                null(),
-                &mut set_layout,
-            ));
-        }
-
-        // descriptor set
-        unsafe {
-            let desc_set_allocate_info = VkDescriptorSetAllocateInfo {
-                sType: VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                pNext: null(),
-                descriptorPool: pool,
-                descriptorSetCount: count,
-                pSetLayouts: &set_layout,
-            };
-            vk_assert(vkAllocateDescriptorSets(
-                *device,
-                &desc_set_allocate_info,
-                sets.as_mut_ptr(),
-            ));
-        }
-
-        Self {
-            device: device,
-            pool: pool,
-            sets: sets,
-            set_layouts: vec![set_layout],
-            count: count,
-        }
-    }
-
-    pub fn update(&self, write_desc_set: Vec<VkWriteDescriptorSet>) {
-        unsafe {
-            vkUpdateDescriptorSets(
-                *self.device,
-                write_desc_set.len() as u32,
-                write_desc_set.as_ptr(),
-                0,
-                null(),
-            );
-        }
-    }
-}
+    // texture 2D
+    // pub fn create_texture2D<'a>() -> Result<Texture> {
+
+    // }
+} 

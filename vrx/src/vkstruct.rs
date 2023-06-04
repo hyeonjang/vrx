@@ -1,3 +1,4 @@
+//@@todo more configuration
 // #[cfg_attr(feature = "graphics",)]
 include!("vk_graphics_header.rs");
 // #[cfg_attr(feature = "computes",)]
@@ -10,8 +11,6 @@ use std::ptr::*;
 use std::ptr::{copy_nonoverlapping, null};
 use std::str::*;
 use std::sync::{Mutex, Once};
-
-use anyhow::*;
 
 use phf::phf_map;
 
@@ -69,7 +68,7 @@ macro_rules! impl_create_function {
                 &self,
                 [<$name:snake _create_info>]: *const [<Vk $name CreateInfo $($khr)?>],
                 p_allocator: Option<*const VkAllocationCallbacks>,
-            ) -> Result<[<Vk $name $($khr)?>]> {
+            ) -> anyhow::Result<[<Vk $name $($khr)?>]> {
                 let mut instance = vk_instantiate!([<Vk $name $($khr)?>]);
 
                 unsafe {
@@ -347,6 +346,13 @@ impl_builder_for_vk_structure_t!(
         pub maxSets: u32,
         pub poolSizeCount: u32,
         pub pPoolSizes: *const VkDescriptorPoolSize,
+    }
+);
+
+impl_builder_for_vk_none_structure_t!(
+    pub struct VkDescriptorPoolSize {
+        pub type_: VkDescriptorType,
+        pub descriptorCount: u32,
     }
 );
 
@@ -681,6 +687,14 @@ impl_builder_for_vk_structure_t!(
 );
 
 impl_builder_for_vk_none_structure_t!(
+    pub struct VkDescriptorBufferInfo {
+    pub buffer: VkBuffer,
+    pub offset: VkDeviceSize,
+    pub range: VkDeviceSize,
+}
+);
+
+impl_builder_for_vk_none_structure_t!(
     pub struct VkVertexInputBindingDescription {
         pub binding: u32,
         pub stride: u32,
@@ -694,6 +708,16 @@ impl_builder_for_vk_none_structure_t!(
         pub binding: u32,
         pub format: VkFormat,
         pub offset: u32,
+    }
+);
+
+impl_builder_for_vk_none_structure_t!(
+    pub struct VkDescriptorSetLayoutBinding {
+        pub binding: u32,
+        pub descriptorType: VkDescriptorType,
+        pub descriptorCount: u32,
+        pub stageFlags: VkShaderStageFlags,
+        pub pImmutableSamplers: *const VkSampler,
     }
 );
 

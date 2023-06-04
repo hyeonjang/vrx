@@ -1,9 +1,8 @@
-include!("vk_header.rs");
-
 //
 // OOP
 // trait binding
 //
+use paste::paste;
 
 macro_rules! create_func {
     // other things
@@ -208,7 +207,7 @@ pub trait VkDeviceFunctions {
     //
     // memory
     fn allocate_memory(&self, memory_allocate_info: *const VkMemoryAllocateInfo, p_allocator: Option<*const VkAllocationCallbacks>) -> VkDeviceMemory;
-    fn map_memory(&self, offset: u64, size: u64, flags: u32, memory: &VkDeviceMemory) -> Result<*mut c_void>;
+    fn map_memory(&self, offset: u64, size: u64, flags: u32, memory: &VkDeviceMemory) -> anyhow::Result<*mut c_void>;
     fn unmap_memory(&self, memory: &VkDeviceMemory);
     fn free_memory(&self, memory: &VkDeviceMemory, p_allocator: Option<*const VkAllocationCallbacks>);
 
@@ -236,6 +235,11 @@ pub trait VkDeviceFunctions {
     // Memory
     fn get_buffer_memory_requirements(&self, buffer: VkBuffer) -> VkMemoryRequirements;
 
+    // descriptor set
+    fn allocate_descriptor_sets(&self, allocate_info: &VkDescriptorSetAllocateInfo) -> Vec<VkDescriptorSet>;
+    fn free_descriptor_sets(&self, descriptor_pool: VkDescriptorPool, descriptor_sets: Vec<VkDescriptorSet>);
+    fn update_descriptor_sets(&self, descriptor_writes: &[VkWriteDescriptorSet], descriptor_copies: &[VkCopyDescriptorSet]);
+
     // Swapchain
     fn get_swapchain_images_khr(&self, swapchain: VkSwapchainKHR) -> Vec<VkImage>;
     fn acquire_next_image_khr(
@@ -251,7 +255,7 @@ pub trait VkDeviceFunctions {
     fn reset_fence(&self, fences: &[VkFence]);
 
     //
-    fn wait_idle(&self) -> Result<VkResult>;
+    fn wait_idle(&self) -> anyhow::Result<VkResult>;
 }
 
 impl VkDeviceFunctions for VkDevice {
@@ -354,7 +358,7 @@ impl VkDeviceFunctions for VkDevice {
         memory
     }
 
-    fn map_memory(&self, offset: u64, size: u64, flags: u32, memory: &VkDeviceMemory) -> Result<*mut c_void> {
+    fn map_memory(&self, offset: u64, size: u64, flags: u32, memory: &VkDeviceMemory) -> anyhow::Result<*mut c_void> {
         unsafe {
             let mut mapped = MaybeUninit::<*mut c_void>::uninit();
 
@@ -454,7 +458,43 @@ impl VkDeviceFunctions for VkDevice {
         }
     }
 
-    // Swapchain
+    // descriptor set
+    fn allocate_descriptor_sets(&self, allocate_info: &VkDescriptorSetAllocateInfo) -> Vec<VkDescriptorSet> {
+        let mut descriptor_sets = vec![vk_instantiate!(VkDescriptorSet); allocate_info.descriptorSetCount as usize];
+        unsafe {
+            vkAllocateDescriptorSets(
+                *self,
+                allocate_info,
+                descriptor_sets.as_mut_ptr()
+            );
+        }
+        descriptor_sets
+    }
+
+    fn free_descriptor_sets(&self, descriptor_pool: VkDescriptorPool, descriptor_sets: Vec<VkDescriptorSet>) {
+        unsafe {
+            vkFreeDescriptorSets(
+                *self,
+                descriptor_pool,
+                descriptor_sets.len() as u32,
+                descriptor_sets.as_ptr()
+            );
+        }
+    }   
+
+    fn update_descriptor_sets(&self, descriptor_writes: &[VkWriteDescriptorSet], descriptor_copies: &[VkCopyDescriptorSet]) {
+        unsafe {
+            vkUpdateDescriptorSets(
+                *self,
+                descriptor_writes.len() as u32,
+                descriptor_writes.as_ptr(),
+                descriptor_copies.len() as u32,
+                descriptor_copies.as_ptr(),
+            );
+        }
+    }
+
+    // swapchain
     fn get_swapchain_images_khr(&self, swapchain: VkSwapchainKHR) -> Vec<VkImage> {
         // get images count
         let mut n_images: u32 = 0;
@@ -526,8 +566,8 @@ impl VkDeviceFunctions for VkDevice {
     }
 
     // wait
-    fn wait_idle(&self) -> Result<VkResult> {
-        let result: Result<VkResult>;
+    fn wait_idle(&self) -> anyhow::Result<VkResult> {
+        let result: anyhow::Result<VkResult>;
         unsafe {
             result = Ok(vkDeviceWaitIdle(*self));
         }
