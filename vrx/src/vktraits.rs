@@ -210,6 +210,8 @@ pub trait VkDeviceFunctions {
     fn map_memory(&self, offset: u64, size: u64, flags: u32, memory: &VkDeviceMemory) -> anyhow::Result<*mut c_void>;
     fn unmap_memory(&self, memory: &VkDeviceMemory);
     fn free_memory(&self, memory: &VkDeviceMemory, p_allocator: Option<*const VkAllocationCallbacks>);
+    fn flush_mapped_memory_range(&self, memory_range_count: u32, p_memory_ranges: *const VkMappedMemoryRange);
+    fn invalidate_mapped_memory_ranges(&self, memory_range_count: u32, p_memory_ranges: *const VkMappedMemoryRange);
 
     fn bind_buffer_memory(
         &self,
@@ -217,6 +219,7 @@ pub trait VkDeviceFunctions {
         memory: VkDeviceMemory,
         memory_offset: VkDeviceSize,
     ) -> VkResult;
+    
     fn bind_image_memory(
         &self,
         image: VkImage,
@@ -234,6 +237,7 @@ pub trait VkDeviceFunctions {
 
     // Memory
     fn get_buffer_memory_requirements(&self, buffer: VkBuffer) -> VkMemoryRequirements;
+    fn get_image_memory_requirements(&self, image: VkImage) -> VkMemoryRequirements;
 
     // descriptor set
     fn allocate_descriptor_sets(&self, allocate_info: &VkDescriptorSetAllocateInfo) -> Vec<VkDescriptorSet>;
@@ -391,6 +395,19 @@ impl VkDeviceFunctions for VkDevice {
         }
     }
 
+    fn flush_mapped_memory_range(&self, memory_range_count: u32, p_memory_ranges: *const VkMappedMemoryRange) {
+        unsafe  {
+            vkFlushMappedMemoryRanges(*self, memory_range_count, p_memory_ranges);
+        }
+    }
+    
+    fn invalidate_mapped_memory_ranges(&self, memory_range_count: u32, p_memory_ranges: *const VkMappedMemoryRange){
+        unsafe {
+            vkInvalidateMappedMemoryRanges(*self, memory_range_count, p_memory_ranges);
+        }
+    }
+
+
     fn bind_buffer_memory(
         &self,
         buffer: VkBuffer,
@@ -453,6 +470,19 @@ impl VkDeviceFunctions for VkDevice {
                 memoryTypeBits: 0,
             };
             vkGetBufferMemoryRequirements(*self, buffer, &mut mem_req);
+
+            mem_req
+        }
+    }
+
+    fn get_image_memory_requirements(&self, image: VkImage) -> VkMemoryRequirements {
+        unsafe {
+            let mut mem_req = VkMemoryRequirements {
+                size: 0,
+                alignment: 0,
+                memoryTypeBits: 0,
+            };
+            vkGetImageMemoryRequirements(*self, image, &mut mem_req);
 
             mem_req
         }

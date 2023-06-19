@@ -81,16 +81,16 @@ where
         let shape = (out_values.len() as u32, out_values[0].len() as u32);
         let len = shape.0 * shape.1;
         let mut out_buffer = handler
-            .create_vxbuffer(
-                Some(&mut out_values[0][0]),
-                len as u32,
+            .create_buffer(
+                (Some(out_values[0].as_ptr()), len as usize),
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
                     | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
                     | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 0,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             )
             .unwrap();
+        out_buffer.bind_buffer_memory(0);
         out_buffer.map_to_gpu_and_unmap();
 
         let image_create_info = VkImageCreateInfoBuilder::new()
@@ -162,7 +162,7 @@ where
         // construct compute pipeline
         // //
         let buffer_descriptor = VkDescriptorBufferInfo {
-            buffer: *out_buffer.buffer(),
+            buffer: out_buffer.into_raw_vk(),
             offset: 0,
             range: out_buffer.vksize(),
         };
@@ -326,7 +326,7 @@ where
             DISPATCH(32, 1, 1);
 
             let buffer_barrier = VkBufferMemoryBarrierBuilder::new()
-                .buffer(*(out_buffer.buffer()))
+                .buffer(out_buffer.into_raw_vk())
                 .size(VK_WHOLE_SIZE as u64)
                 .src_access_mask(VK_ACCESS_SHADER_WRITE_BIT.try_into().unwrap())
                 .dst_access_mask(VK_ACCESS_TRANSFER_READ_BIT.try_into().unwrap())
@@ -369,7 +369,7 @@ where
             .offset(0)
             .size(VK_WHOLE_SIZE as u64)
             .build();
-        out_buffer.invalidate_mapped_memory_ranges(1, &mapped_ranges);
+        out_buffer.invalidate_mapped_memory_ranges(&[mapped_ranges]);
 
         // let mut finalle = [[T::default(); R]; C];
         // println!("finalle {:?}", finalle);

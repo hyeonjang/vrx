@@ -60,27 +60,57 @@ impl<'a> Descriptor<'a> {
     }
 }
 
-pub trait MemoryFunctions {
-    // trait getter
-    fn device(&self) -> &VkDevice;
-    fn buffer(&self) -> Option<&VkBuffer> {
-        None
-    }
-    fn buffer_mut(&mut self) -> Option<&mut VkBuffer> {
-        None
-    }
-    fn image(&self) -> Option<&VkImage> {
-        None
-    }
-    fn image_mut(&mut self) -> Option<&mut VkImage> {
-        None
-    }
-    fn memory(&self) -> &VkDeviceMemory;
-    fn memory_mut(&mut self) -> &mut VkDeviceMemory;
+mod memory_function {
+
+    // use crate::{VkDevice, VkBuffer, VkImage, VkDeviceMemory, VkMemoryAllocateInfoBuilder, VkMemoryPropertyFlags } ;
+    use crate::*;
 
     /// functional
-    fn get_memory_requirements(&self) -> VkMemoryRequirements;
-    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits);
+    fn get_phyiscal_device_memory_property_collect(mem_prop_flags: VkMemoryPropertyFlags) -> Vec<u32>{
+        let ctx = vulkan_context();
+
+        //@@ to static
+        let mut mem_prop = ctx.get_physical_device_memory_properties();
+        let mut collect: Vec<u32> = (0..mem_prop.memoryTypeCount).collect();
+        collect.retain(|i| {
+            mem_prop.memoryTypes[*i as usize].propertyFlags
+                & mem_prop_flags
+                == mem_prop_flags
+        });
+        collect
+    }
+
+    pub fn allocate_buffer_memory(device: &VkDevice, buffer: VkBuffer, mem_prop_flags: VkMemoryPropertyFlags) -> VkDeviceMemory {
+
+        let collect = get_phyiscal_device_memory_property_collect(mem_prop_flags);
+
+        let mut mem_req = device.get_buffer_memory_requirements(buffer);
+        let mut mem_alloc_info = VkMemoryAllocateInfoBuilder::new()
+            .allocation_size(mem_req.size)
+            .memory_type_index(collect[0])
+            .build();
+
+        device.allocate_memory(&mem_alloc_info, None)
+    }
+
+    pub fn allocate_image_memory(device: &VkDevice, image: VkImage, mem_prop_flags: VkMemoryPropertyFlags) -> VkDeviceMemory {
+
+        let collect =get_phyiscal_device_memory_property_collect(mem_prop_flags);
+
+        let mut mem_req = device.get_image_memory_requirements(image);
+        let mut mem_alloc_info = VkMemoryAllocateInfoBuilder::new()
+            .allocation_size(mem_req.size)
+            .memory_type_index(collect[0])
+            .build();
+
+        device.allocate_memory(&mem_alloc_info, None)
+    }
+}
+
+pub trait MemoryFunctions {
+
+    fn device(&self) -> &VkDevice;
+    fn memory(&self) -> &VkDeviceMemory;
 
     fn map_memory(&self, offset: u64, size: u64, flags: u32) -> anyhow::Result<*mut std::os::raw::c_void> {
         self.device().map_memory(offset, size, flags, self.memory())
@@ -94,84 +124,49 @@ pub trait MemoryFunctions {
         self.device().free_memory(self.memory(), p_allocator);
     }
 
-    fn flush_mapped_memory_range(
-        &self,
-        memory_range_count: u32,
-        p_memory_ranges: *const VkMappedMemoryRange,
-    ) {
-        unsafe {
-            vkFlushMappedMemoryRanges(*self.device(), memory_range_count, p_memory_ranges);
-        }
+    fn invalidate_mapped_memory_ranges(&self, mapped_memory_range: &[VkMappedMemoryRange]) {
+        self.device().invalidate_mapped_memory_ranges(mapped_memory_range.len() as u32, mapped_memory_range.as_ptr());
     }
 
-    fn invalidate_mapped_memory_ranges(
-        &self,
-        memory_range_count: u32,
-        p_memory_ranges: *const VkMappedMemoryRange,
-    ) {
-        unsafe {
-            vkInvalidateMappedMemoryRanges(*self.device(), memory_range_count, p_memory_ranges);
-        }
-    }
     fn bind_buffer_memory(&self, offset: VkDeviceSize) {}
     fn bind_image_memory(&self, offset: VkDeviceSize) {}
 }
 
 #[derive(Debug)]
-pub struct VxBuffer<'a, T> {
-    device: &'a VkDevice,
-
-    pub buffer: VkBuffer,
-    memory: VkDeviceMemory,
-
-    data: Option<*const T>,
-    len: u32,
+struct Data<T> {
+    ptr_: Option<*const T>,
+    len_: usize
 }
 
-impl<'a, T> MemoryFunctions for VxBuffer<'a, T> {
+impl<T> Data<T> {
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr_.unwrap()
+    }
+    pub fn len(&self) -> usize {
+        self.len_
+    }
+}
+
+#[derive(Debug)]
+pub struct Buffer<'a, T> {
+    device: &'a VkDevice,
+
+    // gpu side
+    buffer: VkBuffer,               // buffer
+    memory: VkDeviceMemory,         // gpu address
+
+    // cpu side
+    data: Data<T>, 
+}
+
+impl<'a, T> MemoryFunctions for Buffer<'a, T> {
+
     fn device(&self) -> &VkDevice {
         self.device
     }
 
-    fn buffer(&self) -> Option<&VkBuffer> {
-        Some(&self.buffer)
-    }
-
-    fn buffer_mut(&mut self) -> Option<&mut VkBuffer> {
-        Some(&mut self.buffer)
-    }
-
     fn memory(&self) -> &VkDeviceMemory {
         &self.memory
-    }
-
-    fn memory_mut(&mut self) -> &mut VkDeviceMemory {
-        &mut self.memory
-    }
-
-    fn get_memory_requirements(&self) -> VkMemoryRequirements {
-        self.device.get_buffer_memory_requirements(self.buffer)
-    }
-
-    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
-        let ctx = vulkan_context();
-
-        //@@ to static
-        let mut mem_prop = ctx.get_physical_device_memory_properties();
-        let mut collect: Vec<u32> = (0..mem_prop.memoryTypeCount).collect();
-        collect.retain(|i| {
-            mem_prop.memoryTypes[*i as usize].propertyFlags
-                & mem_prop_flags as VkMemoryPropertyFlags
-                == mem_prop_flags as VkMemoryPropertyFlags
-        });
-
-        let mut mem_req = self.get_memory_requirements();
-        let mut mem_alloc_info = VkMemoryAllocateInfoBuilder::new()
-            .allocation_size(mem_req.size)
-            .memory_type_index(collect[0])
-            .build();
-
-        self.memory = self.device().allocate_memory(&mem_alloc_info, None);
     }
 
     fn bind_buffer_memory(&self, offset: VkDeviceSize) {
@@ -179,54 +174,44 @@ impl<'a, T> MemoryFunctions for VxBuffer<'a, T> {
     }
 }
 
-impl<'a, T> Drop for VxBuffer<'a, T> {
+impl<'a, T> Drop for Buffer<'a, T> {
     fn drop(&mut self) {
         unsafe {
             self.destroy(None);
         }
-    }
+    }  
 }
 
-impl<'a, T> VxBuffer<'a, T> {
+impl<'a, T> Buffer<'a, T> {
     pub fn new(
-        data: Option<*const T>,
-        len: u32,
+        data_: (Option<*const T>, usize),
         flags: VkBufferCreateFlags,
         usage: VkBufferUsageFlags,
-        mem_prop_flags: VkMemoryPropertyFlagBits,
+        mem_prop_flags: VkMemoryPropertyFlags,
         device: &'a VkDevice,
     ) -> Self {
-        let mem = vk_instantiate!(VkDeviceMemory);
 
+        let data = Data { ptr_: data_.0, len_: data_.1 };
         let info = VkBufferCreateInfoBuilder::new()
             .flags(flags)
-            .size((len * std::mem::size_of::<T>() as u32) as u64)
+            .size((data.len() * std::mem::size_of::<T>()) as u64)
             .usage(usage)
             .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
             .build();
-        let buf = device.create_buffer(&info, None);
 
-        let mut buffer = Self {
-            buffer: buf,
-            memory: mem,
-            data: data,
-            len: len,
-            device: device,
-        };
+        let buffer = device.create_buffer(&info, None);
+        let memory: VkDeviceMemory = memory_function::allocate_buffer_memory(device, buffer, mem_prop_flags);
 
-        buffer.allocate_memory(mem_prop_flags);
-        buffer.bind_buffer_memory(0);
-
-        buffer
-    }
-
-    pub fn buffer(&self) -> &VkBuffer {
-        &self.buffer
+        Self { device, buffer, memory, data }
     }
 
     pub fn destroy(&self, p_allocator: Option<*const VkAllocationCallbacks>) {
         self.device.destroy_buffer(self.buffer, p_allocator);
-        self.device.free_memory(self.memory(), p_allocator);
+        self.device.free_memory(&self.memory, p_allocator);
+    }
+
+    pub fn into_raw_vk(&self) -> VkBuffer {
+        *&self.buffer
     }
 
     // mappings
@@ -241,7 +226,8 @@ impl<'a, T> VxBuffer<'a, T> {
     pub fn map_to_gpu_and_unmap(&self) {
         let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
         unsafe {
-            std::ptr::copy_nonoverlapping(self.data.unwrap(), mapped.cast(), self.len as usize);
+            std::ptr::copy_nonoverlapping(
+                self.data.as_ptr(), mapped.cast(), self.data.len());
         }
         self.unmap_memory();
     }
@@ -250,11 +236,11 @@ impl<'a, T> VxBuffer<'a, T> {
     where
         T: std::clone::Clone + Default,
     {
-        let mut output = vec![T::default(); self.len as usize];
+        let mut output = vec![T::default(); self.data.len()];
 
         let mapped = self.map_memory(0, self.vksize(), 0).unwrap();
         unsafe {
-            std::ptr::copy_nonoverlapping(mapped.cast(), output.as_mut_ptr(), self.len as usize);
+            std::ptr::copy_nonoverlapping(mapped.cast(), output.as_mut_ptr(), self.data.len());
         }
         self.unmap_memory();
 
@@ -262,7 +248,7 @@ impl<'a, T> VxBuffer<'a, T> {
     }
 
     pub fn vksize(&self) -> VkDeviceSize {
-        (self.len * std::mem::size_of::<T>() as u32) as VkDeviceSize
+        (self.data.len() * std::mem::size_of::<T>()) as VkDeviceSize
     }
 }
 
@@ -272,6 +258,7 @@ pub trait TextureOperator {
 
 pub struct Texture<'a> {
     image: VkImage,             // memory layout
+    buffer: VkBuffer,           // staging buffer
     memory: VkDeviceMemory,     // real memory
 
     device: &'a VkDevice,
@@ -281,16 +268,19 @@ impl<'a> Texture<'a> {
     pub fn new(
         mem_prop_flags: VkMemoryPropertyFlagBits,
         device: &'a VkDevice,
-    ) -> Self {
-        let mut texture = Self {
-            image: std::ptr::null_mut(),
-            memory: std::ptr::null_mut(),
+    // ) -> Self {
+    ) {
+        // initialize method
 
-            device: device,
-        };
+        // let mut texture = Self {
+        //     image: std::ptr::null_mut(),
+        //     memory: std::ptr::null_mut(),
+
+        //     device: device,
+        // };
 
         // texture.allocate_memory(mem_prop_flags);
-        texture
+        // texture
     }
 
     pub fn image(&self) -> &VkImage {
@@ -307,53 +297,8 @@ impl<'a> MemoryFunctions for Texture<'a> {
         self.device
     }
 
-    fn image(&self) -> Option<&VkImage> {
-        Some(&self.image)
-    }
-
-    fn image_mut(&mut self) -> Option<&mut VkImage> {
-        Some(&mut self.image)
-    }
-
     fn memory(&self) -> &VkDeviceMemory {
         &self.memory
-    }
-
-    fn memory_mut(&mut self) -> &mut VkDeviceMemory {
-        &mut self.memory
-    }
-
-    fn get_memory_requirements(&self) -> VkMemoryRequirements {
-        unsafe {
-            let mut mem_req = VkMemoryRequirements {
-                size: 0,
-                alignment: 0,
-                memoryTypeBits: 0,
-            };
-            vkGetImageMemoryRequirements(*self.device(), *self.image(), &mut mem_req);
-
-            mem_req
-        }
-    }
-
-    fn allocate_memory(&mut self, mem_prop_flags: VkMemoryPropertyFlagBits) {
-        let ctx = vulkan_context();
-
-        let mut mem_prop = ctx.get_physical_device_memory_properties();
-        let mut collect: Vec<u32> = (0..mem_prop.memoryTypeCount).collect();
-        collect.retain(|i| {
-            mem_prop.memoryTypes[*i as usize].propertyFlags
-                & mem_prop_flags as VkMemoryPropertyFlags
-                == mem_prop_flags as VkMemoryPropertyFlags
-        });
-
-        let mut mem_req = self.get_memory_requirements();
-        let mut mem_alloc_info = VkMemoryAllocateInfoBuilder::new()
-            .allocation_size(mem_req.size)
-            .memory_type_index(collect[0])
-            .build();
-
-        self.memory = self.device().allocate_memory(&mem_alloc_info, None);
     }
 
     fn bind_buffer_memory(&self, offset: VkDeviceSize) {

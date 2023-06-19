@@ -846,32 +846,36 @@ impl VulkanResourceHandler {
     }
 
     // buffer
-    pub fn create_vxbuffer<'a, T>(
+    pub fn create_buffer<'a, T>(
         &'a self,
-        data: Option<*const T>,
-        len: u32,
+        data: (Option<*const T>, usize),
         usage: VkBufferUsageFlagBits,
-        flags: VkBufferCreateFlags,
+        flags: VkBufferCreateFlagBits,
         mem_prop_flags: VkMemoryPropertyFlagBits,
-    ) -> anyhow::Result<VxBuffer<T>> {
-        Ok(VxBuffer::<T>::new(
+    ) -> anyhow::Result<Buffer<T>> {
+        Ok(Buffer::<T>::new(
             data,
-            len,
-            flags,
+            flags as VkBufferCreateFlags,
             usage as VkBufferUsageFlags,
-            mem_prop_flags,
+            mem_prop_flags as VkMemoryPropertyFlags,
             &self.device,
         ))
     }
 
+    pub fn create_staging_buffer(
+
+    ) {
+
+    }
+
     // Textures
     // raw texture
-    pub fn create_texture<'a>(
-        &'a self,
-        mem_prop_info: VkMemoryPropertyFlagBits,
-    ) -> anyhow::Result<Texture> {
-        Ok(Texture::new(mem_prop_info, &self.device))
-    }
+    // pub fn create_texture<'a>(
+    //     &'a self,
+    //     mem_prop_info: VkMemoryPropertyFlagBits,
+    // ) -> anyhow::Result<Texture> {
+    //     Ok(Texture::new(mem_prop_info, &self.device))
+    // }
 
     // texture 2D
     // pub fn create_texture2D<'a>() -> Result<Texture> {

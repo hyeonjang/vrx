@@ -575,7 +575,7 @@ impl Vertex {
     }
 }
 
-const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
+const INDICES: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
 lazy_static! {
     static ref VERTICES: Vec<Vertex> = vec![
@@ -612,9 +612,9 @@ struct App<'a> {
     frame: usize,
     resized: bool,
 
-    vertex_buffer: VxBuffer<'a, Vertex>,
-    index_buffer: VxBuffer<'a, u16>,
-    uniform_buffer: VxBuffer<'a, UniformBufferObject>,
+    vertex_buffer: Buffer<'a, Vertex>,
+    index_buffer: Buffer<'a, u16>,
+    uniform_buffer: Buffer<'a, UniformBufferObject>,
 
     descriptor: Descriptor<'a>,
 
@@ -671,33 +671,32 @@ impl<'a> App<'a> {
         );
 
         let vertex_buffer = handler
-            .create_vxbuffer(
-                None,
-                VERTICES.len() as u32,
+            .create_buffer(
+                (None, VERTICES.len()),
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_SHARING_MODE_EXCLUSIVE as u32,
+                VK_SHARING_MODE_EXCLUSIVE,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             )
             .unwrap();
+        vertex_buffer.bind_buffer_memory(0);
 
-        let index_buffer = handler
-            .create_vxbuffer(
-                None,
-                (std::mem::size_of::<UniformBufferObject>() * 3) as u32,
+        let index_buffer: Buffer<u16> = handler
+            .create_buffer(
+                (None, INDICES.len()),
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                VK_SHARING_MODE_EXCLUSIVE as u32,
+                VK_SHARING_MODE_EXCLUSIVE,  
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            )
-            .unwrap();
+            ).unwrap();
+        index_buffer.bind_buffer_memory(0);
 
-        let uniform_buffer: VxBuffer<UniformBufferObject> = handler.
-            create_vxbuffer(
-                None,
-                std::mem::size_of::<UniformBufferObject>() as u32,
+        let uniform_buffer: Buffer<UniformBufferObject> = handler.
+            create_buffer(
+                (None, 1),
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VK_SHARING_MODE_EXCLUSIVE as u32,
+                VK_SHARING_MODE_EXCLUSIVE,
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
             ).unwrap();
+        uniform_buffer.bind_buffer_memory(0);
 
 
         let mut app = Self {
@@ -814,14 +813,14 @@ impl<'a> App<'a> {
     fn create_vertex_buffer(&mut self) {
         let staging_buffer = self
             .handler
-            .create_vxbuffer(
-                Some(VERTICES.as_ptr()),
-                VERTICES.len() as u32,
+            .create_buffer(
+                (Some(VERTICES.as_ptr()), VERTICES.len()),
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_SHARING_MODE_EXCLUSIVE as u32,
+                VK_SHARING_MODE_EXCLUSIVE,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             )
             .unwrap();
+        staging_buffer.bind_buffer_memory(0);
         staging_buffer.map_to_gpu_and_unmap();
 
         // copy
@@ -838,8 +837,8 @@ impl<'a> App<'a> {
             };
 
             COPY_BUFFER(
-                staging_buffer.buffer,
-                self.vertex_buffer.buffer,
+                staging_buffer.into_raw_vk(),
+                self.vertex_buffer.into_raw_vk(),
                 1,
                 &copy_info
             );
@@ -864,14 +863,14 @@ impl<'a> App<'a> {
     fn create_index_buffer(&self) {
         let staging_buffer = self
             .handler
-            .create_vxbuffer(
-                Some(INDICES.as_ptr()),
-                INDICES.len() as u32,
+            .create_buffer(
+                (Some(INDICES.as_ptr()), INDICES.len()),
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_SHARING_MODE_EXCLUSIVE as u32,
+                VK_SHARING_MODE_EXCLUSIVE,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             )
             .unwrap();
+        staging_buffer.bind_buffer_memory(0);
         staging_buffer.map_to_gpu_and_unmap();
 
         // copy
@@ -888,8 +887,8 @@ impl<'a> App<'a> {
             };
 
             COPY_BUFFER(
-                staging_buffer.buffer,
-                self.index_buffer.buffer,
+                staging_buffer.into_raw_vk(),
+                self.index_buffer.into_raw_vk(),
                 1,
                 &copy_info
             );
@@ -917,7 +916,7 @@ impl<'a> App<'a> {
 
         // Update
         let buffer_info = VkDescriptorBufferInfoBuilder::new()
-            .buffer(self.uniform_buffer.buffer)
+            .buffer(self.uniform_buffer.into_raw_vk())
             .offset(0)
             .range(std::mem::size_of::<UniformBufferObject>() as u64)
             .build();
@@ -1013,8 +1012,8 @@ impl<'a> App<'a> {
                     VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline
                 );
                 BIND_DESCRIPTOR_SETS(VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline_layout, 0, 1, &self.descriptor.sets.as_ref().unwrap()[0], 0, &0);
-                BIND_VERTEX_BUFFERS(0, 1, &self.vertex_buffer.buffer, (&[0]).as_ptr());
-                BIND_INDEX_BUFFER(self.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+                BIND_VERTEX_BUFFERS(0, 1, &self.vertex_buffer.into_raw_vk(), (&[0]).as_ptr());
+                BIND_INDEX_BUFFER(self.index_buffer.into_raw_vk(), 0, VK_INDEX_TYPE_UINT16);
                 DRAW_INDEXED(INDICES.len() as u32, 1, 0, 0, 0);
                 END_RENDER_PASS();
             };
