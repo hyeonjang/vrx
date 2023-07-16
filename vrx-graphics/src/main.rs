@@ -3,6 +3,7 @@
 extern crate winit;
 use anyhow::{anyhow, Result};
 use paste::paste;
+use vrx::memory::*;
 use vrx::*;
 
 use lazy_static::lazy_static;
@@ -45,12 +46,12 @@ impl<'a> Default for Presentation<'a> {
 }
 
 impl<'a> Presentation<'a> {
-    fn new(device: &'a VkDevice, queue_family_indices: &Vec<u32>, window: &Window) -> Self {
+    fn new(device: &'a VkDevice, queue_family_indices: &[u32], window: &Window) -> Self {
         let surface = Self::new_surface(&window);
         let support = SwapchainSupport::new(&surface);
 
         let format = support.get_swapchain_surface_format(
-            VK_FORMAT_R8G8B8A8_SRGB,
+            VkFormat::VK_FORMAT_R8G8B8A8_SRGB,
             VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
         );
         let present_mode = support.get_swapchain_present_mode(VK_PRESENT_MODE_MAILBOX_KHR);
@@ -93,7 +94,7 @@ impl<'a> Presentation<'a> {
 
     fn new_swapchain(
         device: &VkDevice,
-        queue_family_indices: &Vec<u32>,
+        queue_family_indices: &[u32],
         surface: &VkSurfaceKHR,
         capabilities: VkSurfaceCapabilitiesKHR,
         surface_format: VkSurfaceFormatKHR,
@@ -108,7 +109,7 @@ impl<'a> Presentation<'a> {
             .image_extent(extent)
             .image_array_layers(1)
             .image_usage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT as u32)
-            .image_sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
+            .image_sharing_mode(VkSharingMode::VK_SHARING_MODE_EXCLUSIVE)
             .queue_family_index_count(queue_family_indices.len() as u32)
             .p_queue_family_indices(queue_family_indices.as_ptr())
             .pre_transform(capabilities.currentTransform)
@@ -128,10 +129,10 @@ impl<'a> Presentation<'a> {
             .iter()
             .map(|image| {
                 let components = VkComponentMapping {
-                    r: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    g: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    b: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    a: VK_COMPONENT_SWIZZLE_IDENTITY,
+                    r: VkComponentSwizzle::VK_COMPONENT_SWIZZLE_IDENTITY,
+                    g: VkComponentSwizzle::VK_COMPONENT_SWIZZLE_IDENTITY,
+                    b: VkComponentSwizzle::VK_COMPONENT_SWIZZLE_IDENTITY,
+                    a: VkComponentSwizzle::VK_COMPONENT_SWIZZLE_IDENTITY,
                 };
 
                 let subresource_range = VkImageSubresourceRange {
@@ -144,7 +145,7 @@ impl<'a> Presentation<'a> {
 
                 let image_view_create_info = VkImageViewCreateInfoBuilder::new()
                     .image(*image)
-                    .view_type(VK_IMAGE_VIEW_TYPE_2D)
+                    .view_type(VkImageViewType::VK_IMAGE_VIEW_TYPE_2D)
                     .format(format.format)
                     .components(components)
                     .subresource_range(subresource_range)
@@ -267,20 +268,20 @@ impl GraphicsPipelineProperties {
         let pos = VkVertexInputAttributeDescriptionBuilder::new()
             .binding(0)
             .location(0)
-            .format(VK_FORMAT_R32G32_SFLOAT)
+            .format(VkFormat::VK_FORMAT_R32G32_SFLOAT)
             .offset(0)
             .build();
         let col = VkVertexInputAttributeDescriptionBuilder::new()
             .binding(0)
             .location(1)
-            .format(VK_FORMAT_R32G32B32_SFLOAT)
+            .format(VkFormat::VK_FORMAT_R32G32B32_SFLOAT)
             .offset(std::mem::size_of::<glm::Vec2>() as u32)
             .build();
 
         let mut bd = VkVertexInputBindingDescriptionBuilder::new()
             .binding(0)
             .stride(std::mem::size_of::<Vertex>() as u32)
-            .input_rate(VK_VERTEX_INPUT_RATE_VERTEX)
+            .input_rate(VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX)
             .build();
 
         // binding_description.inputRate = 0;
@@ -298,7 +299,7 @@ impl GraphicsPipelineProperties {
         println!("{:?}", vertex_input_state.pVertexBindingDescriptions);
 
         let input_assembly_state = VkPipelineInputAssemblyStateCreateInfoBuilder::new()
-            .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+            .topology(VkPrimitiveTopology::VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
             .primitive_restart_enable(VK_FALSE)
             .build();
 
@@ -328,10 +329,10 @@ impl GraphicsPipelineProperties {
         let rasterization_state = VkPipelineRasterizationStateCreateInfoBuilder::new()
             .depth_clamp_enable(VK_FALSE)
             .rasterizer_discard_enable(VK_FALSE)
-            .polygon_mode(VK_POLYGON_MODE_FILL)
+            .polygon_mode(VkPolygonMode::VK_POLYGON_MODE_FILL)
             .line_width(1.0)
             .cull_mode(VK_CULL_MODE_NONE as u32)
-            .front_face(VK_FRONT_FACE_CLOCKWISE)
+            .front_face(VkFrontFace::VK_FRONT_FACE_CLOCKWISE)
             .depth_bias_enable(VK_FALSE)
             .build();
 
@@ -343,18 +344,18 @@ impl GraphicsPipelineProperties {
         let color_blend_attachment_state = VkPipelineColorBlendAttachmentStateBuilder::new()
             .color_write_mask(VK_COLOR_COMPONENT_ALL_BIT as u32)
             .blend_enable(VK_FALSE)
-            .src_color_blend_factor(VK_BLEND_FACTOR_ONE)
-            .dst_color_blend_factor(VK_BLEND_FACTOR_ZERO)
-            .color_blend_op(VK_BLEND_OP_ADD)
-            .src_alpha_blend_factor(VK_BLEND_FACTOR_ONE)
-            .dst_alpha_blend_factor(VK_BLEND_FACTOR_ZERO)
-            .alpha_blend_op(VK_BLEND_OP_ADD)
+            .src_color_blend_factor(VkBlendFactor::VK_BLEND_FACTOR_ONE)
+            .dst_color_blend_factor(VkBlendFactor::VK_BLEND_FACTOR_ZERO)
+            .color_blend_op(VkBlendOp::VK_BLEND_OP_ADD)
+            .src_alpha_blend_factor(VkBlendFactor::VK_BLEND_FACTOR_ONE)
+            .dst_alpha_blend_factor(VkBlendFactor::VK_BLEND_FACTOR_ZERO)
+            .alpha_blend_op(VkBlendOp::VK_BLEND_OP_ADD)
             .build();
 
         let color_blend_attachments = vec![color_blend_attachment_state];
         let color_blend_state = VkPipelineColorBlendStateCreateInfoBuilder::new()
             .logic_op_enable(VK_FALSE)
-            .logic_op(VK_LOGIC_OP_COPY)
+            .logic_op(VkLogicOp::VK_LOGIC_OP_COPY)
             .attachment_count(color_blend_attachments.len() as u32)
             .p_attachments(color_blend_attachments.as_ptr())
             .blend_constants([0.0, 0.0, 0.0, 1.0])
@@ -401,7 +402,7 @@ impl<'a> GraphicsPipeline<'a> {
         presentation: &Presentation,
         properties: &GraphicsPipelineProperties,
         shader_stages: &ShaderModules,
-        set_layouts: &[VkDescriptorSetLayout]
+        set_layouts: &[VkDescriptorSetLayout],
     ) -> Self {
         let mut instance = Self::default();
         instance.set_device(device);
@@ -434,22 +435,22 @@ impl<'a> GraphicsPipeline<'a> {
         let color_attachment_description = VkAttachmentDescriptionBuilder::new()
             .format(presentation.format.format)
             .samples(VK_SAMPLE_COUNT_1_BIT)
-            .load_op(VK_ATTACHMENT_LOAD_OP_CLEAR)
-            .store_op(VK_ATTACHMENT_STORE_OP_STORE)
-            .stencil_load_op(VK_ATTACHMENT_LOAD_OP_CLEAR)
-            .stencil_store_op(VK_ATTACHMENT_STORE_OP_DONT_CARE)
-            .initial_layout(VK_IMAGE_LAYOUT_UNDEFINED)
-            .final_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+            .load_op(VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR)
+            .store_op(VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE)
+            .stencil_load_op(VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR)
+            .stencil_store_op(VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE)
+            .initial_layout(VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED)
+            .final_layout(VkImageLayout::VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
             .build();
 
         // subpass
         let color_attachment_ref = VkAttachmentReferenceBuilder::new()
             .attachment(0)
-            .layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+            .layout(VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
             .build();
         let color_attachments = &[color_attachment_ref];
         let subpass = VkSubpassDescriptionBuilder::new()
-            .pipeline_bind_point(VK_PIPELINE_BIND_POINT_GRAPHICS)
+            .pipeline_bind_point(VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS)
             .color_attachment_count(color_attachments.len() as u32)
             .p_color_attachments(color_attachments.as_ptr())
             .build();
@@ -554,7 +555,7 @@ impl Vertex {
         VkVertexInputBindingDescriptionBuilder::new()
             .binding(0)
             .stride(std::mem::size_of::<Vertex>() as u32)
-            .input_rate(VK_VERTEX_INPUT_RATE_VERTEX)
+            .input_rate(VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX)
             .build()
     }
 
@@ -562,13 +563,13 @@ impl Vertex {
         let pos = VkVertexInputAttributeDescriptionBuilder::new()
             .binding(0)
             .location(0)
-            .format(VK_FORMAT_R32G32B32_SFLOAT)
+            .format(VkFormat::VK_FORMAT_R32G32B32_SFLOAT)
             .offset(0)
             .build();
         let col = VkVertexInputAttributeDescriptionBuilder::new()
             .binding(0)
             .location(1)
-            .format(VK_FORMAT_R32G32B32_SFLOAT)
+            .format(VkFormat::VK_FORMAT_R32G32B32_SFLOAT)
             .offset(0)
             .build();
         [pos, col]
@@ -586,8 +587,6 @@ lazy_static! {
     ];
 }
 
-use shader::bind;
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct UniformBufferObject {
@@ -595,6 +594,11 @@ pub struct UniformBufferObject {
     view: glm::Mat4,
     proj: glm::Mat4,
 }
+
+pub struct TempObject(u32, u32);
+
+impl DescriptorFunctions for UniformBufferObject {}
+impl DescriptorFunctions for TempObject {}
 
 struct App<'a> {
     start: std::time::Instant,
@@ -612,54 +616,31 @@ struct App<'a> {
     frame: usize,
     resized: bool,
 
-    vertex_buffer: Buffer<'a, Vertex>,
-    index_buffer: Buffer<'a, u16>,
+    resource_binding: ResourceBinding<'a>,
     uniform_buffer: Buffer<'a, UniformBufferObject>,
+    descriptors: Vec<Box<dyn DescriptorFunctions>>,
+    vertex_and_index: Vec<(Buffer<'a, Vertex>, Buffer<'a, u16>)>,
 
-    descriptor: Descriptor<'a>,
-
-    handler: &'a VulkanResourceHandler,
+    handler: &'a VulkanHandler,
 }
 
 impl<'a> App<'a> {
-    pub fn new(handler: &'a VulkanResourceHandler, window: &Window) -> App<'a> {
+    pub fn new(handler: &'a VulkanHandler, window: &Window) -> App<'a> {
         let shader_stages = ShaderModules::new(
             &handler.device,
             &[VERT_SPV, FRAG_SPV],
             &[VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT],
         );
-        let presentation = Presentation::new(
-            &handler.device,
-            handler
-                .queue_family_indices
-                .get(&QueueType::graphics)
-                .unwrap(),
-            window,
-        );
-
-        let desc_pool_size = VkDescriptorPoolSizeBuilder::new()
-            .type_(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-            .descriptor_count(2)
-            .build();
-
-        let desc_pool_sizes = &[desc_pool_size];
-        let mut descriptor = handler.create_descriptor(desc_pool_sizes).unwrap();
+        let presentation = Presentation::new(&handler.device, &[0], window);
 
         let binding = VkDescriptorSetLayoutBindingBuilder::new()
             .binding(0)
-            .descriptor_type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+            .descriptor_type(VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
             .descriptor_count(1)
-            .stage_flags(VK_SHADER_STAGE_VERTEX_BIT as u32)
+            .stage_flags(VK_SHADER_STAGE_VERTEX_BIT as VkShaderStageFlags)
             .build();
 
-        let bindings = &[binding];
-        let desc_layout_info = VkDescriptorSetLayoutCreateInfoBuilder::new()
-            .binding_count(bindings.len() as u32)
-            .p_bindings(bindings.as_ptr())
-            .build();
-
-        let desc_layout_infos = &[desc_layout_info];
-        descriptor.create_set_layouts(desc_layout_infos);
+        let resource_binding = handler.create_resource_binding(&[binding]);
 
         let graphics_pipeline_properties = GraphicsPipelineProperties::new(&presentation);
         let graphics_pipeline = GraphicsPipeline::new(
@@ -667,37 +648,39 @@ impl<'a> App<'a> {
             &presentation,
             &graphics_pipeline_properties,
             &shader_stages,
-            descriptor.set_layouts.as_ref().unwrap().as_slice()
+            &[resource_binding.descriptor_set_layouts],
         );
 
-        let vertex_buffer = handler
+        let uniform_buffer: Buffer<UniformBufferObject> = handler
             .create_buffer(
-                (None, VERTICES.len()),
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_SHARING_MODE_EXCLUSIVE,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            )
-            .unwrap();
-        vertex_buffer.bind_buffer_memory(0);
-
-        let index_buffer: Buffer<u16> = handler
-            .create_buffer(
-                (None, INDICES.len()),
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                VK_SHARING_MODE_EXCLUSIVE,  
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            ).unwrap();
-        index_buffer.bind_buffer_memory(0);
-
-        let uniform_buffer: Buffer<UniformBufferObject> = handler.
-            create_buffer(
                 (None, 1),
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VK_SHARING_MODE_EXCLUSIVE,
+                0,
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-            ).unwrap();
-        uniform_buffer.bind_buffer_memory(0);
+            )
+            .unwrap();
 
+        let object0: Buffer<UniformBufferObject> = handler
+            .create_buffer(
+                (None, 1),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                0,
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+            )
+            .unwrap();
+
+        let object1: Buffer<TempObject> = handler
+            .create_buffer(
+                (None, 1),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                0,
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+            )
+            .unwrap();
+            
+        let mut desc: Vec<Box<dyn DescriptorFunctions>> = vec![];
+        desc.push(Box::new(object0));
+        desc.push(Box::new(object1));
 
         let mut app = Self {
             start: std::time::Instant::now(),
@@ -714,15 +697,16 @@ impl<'a> App<'a> {
             images_in_flight: vec![],
             frame: 0,
             resized: false,
-            vertex_buffer: vertex_buffer,
-            index_buffer: index_buffer,
+
+            resource_binding: resource_binding,
+            vertex_and_index: vec![],
+            descriptors: vec![],
             uniform_buffer: uniform_buffer,
-            descriptor: descriptor,
         };
 
         app.create_framebuffers();
-        app.create_vertex_buffer();
-        app.create_index_buffer();
+        app.prepare_render_resources();
+        app.create_texture();
         app.create_and_update_descriptor_set();
         app.create_command_buffers();
         app.create_sync_objects();
@@ -730,9 +714,104 @@ impl<'a> App<'a> {
         app
     }
 
+    fn prepare_static_render_resources(&self) {}
+
+    fn create_render_buffer<T>(
+        handler: &VulkanHandler,
+        ptr: *const T,
+        len: usize,
+        usage: VkBufferUsageFlagBits,
+    ) -> (Buffer<T>, Buffer<T>) {
+        let staging_buffer = handler.create_transfer_src_buffer(ptr, len).unwrap();
+        staging_buffer.map_to_gpu_and_unmap();
+
+        let target_buffer = handler.create_transfer_dst_buffer(len, usage).unwrap();
+
+        (staging_buffer, target_buffer)
+    }
+
+    fn create_texture(&mut self) {
+        let texture_builder = self.handler.texture_builder_from_path("400x400.png");
+        let texture = texture_builder
+            .format(VkFormat::VK_FORMAT_R8G8B8A8_SRGB)
+            .usage(VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+            .samples(VK_SAMPLE_COUNT_1_BIT)
+            .build();
+
+        let command_pool = self.handler.get_command_pool(0);
+        texture.cmd_copy_buffer_to_image(command_pool);
+
+        let image_view = texture.make_view();
+
+        let sampler_info = VkSamplerCreateInfoBuilder::new()
+            .mag_filter(VkFilter::VK_FILTER_LINEAR)
+            .min_filter(VkFilter::VK_FILTER_LINEAR)
+            .build();
+
+        let sampler = self.handler.device.create_sampler(&sampler_info, None);
+    }
+
+    fn prepare_render_resources(&mut self) {
+        let (stg_vert, trg_vert) = Self::create_render_buffer(
+            &self.handler,
+            VERTICES.as_ptr(),
+            VERTICES.len(),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        );
+
+        let (stg_indx, trg_indx) = Self::create_render_buffer(
+            &self.handler,
+            INDICES.as_ptr(),
+            INDICES.len(),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        );
+
+        let cmds = self
+            .handler
+            .allocate_command_buffers(0, VkCommandBufferLevel(0), 2);
+
+        let copy_cmd = |cmd: VkCommandBuffer, size: VkDeviceSize, stg: VkBuffer, trg: VkBuffer| {
+            vkCmdBlock! {
+                THIS cmd;
+
+                let copy_info = VkBufferCopy {
+                    dstOffset: 0,
+                    size: size,
+                    srcOffset: 0,
+                };
+
+                COPY_BUFFER(
+                    stg,
+                    trg,
+                    1,
+                    &copy_info
+                );
+            }
+        };
+
+        copy_cmd(
+            cmds[0],
+            stg_vert.vksize(),
+            stg_vert.into_raw_vk(),
+            trg_vert.into_raw_vk(),
+        );
+        copy_cmd(
+            cmds[1],
+            stg_indx.vksize(),
+            stg_indx.into_raw_vk(),
+            trg_indx.into_raw_vk(),
+        );
+
+        let submit_info = util::submit_info(&[], &[], &cmds, &[]);
+
+        let queue = self.handler.get_queue(0, 0);
+        queue.submit(&[submit_info], None);
+        queue.wait_idle();
+
+        self.vertex_and_index.push((trg_vert, trg_indx));
+    }
+
     pub fn render(&mut self, window: &Window) -> Result<()> {
-
-
         // syn cpu gpu
         let device = &self.handler.device;
         let in_flight_fence = self.in_flight_fences[self.frame];
@@ -760,30 +839,18 @@ impl<'a> App<'a> {
 
         self.update_uniform_buffers();
 
-        let wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT as u32;
-        let wait_semaphores = &[self.image_available_semaphores[self.frame]];
-        let command_buffer = self.command_buffers[image_index as usize];
         let signal_semaphores = &[self.image_available_semaphores[self.frame]];
-        let submit_info = VkSubmitInfoBuilder::new()
-            .wait_semaphore_count(wait_semaphores.len() as u32)
-            .p_wait_semaphores(wait_semaphores.as_ptr())
-            .p_wait_dst_stage_mask(&wait_dst_stage_mask)
-            .command_buffer_count(1)
-            .p_command_buffers(&command_buffer)
-            .signal_semaphore_count(signal_semaphores.len() as u32)
-            .p_signal_semaphores(signal_semaphores.as_ptr())
-            .build();
 
+        let submit_info = util::submit_info(
+            &[self.image_available_semaphores[self.frame]],
+            &[VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT as u32],
+            &[self.command_buffers[image_index as usize]],
+            &[self.image_available_semaphores[self.frame]],
+        );
         device.reset_fence(self.in_flight_fences.as_slice());
 
-        let queue = device.get_queue(
-            self.handler
-                .queue_family_indices
-                .get(&QueueType::graphics)
-                .unwrap()[0],
-            0,
-        );
-        queue.queue_submit(0, 1, &submit_info, self.in_flight_fences[self.frame]);
+        let queue = self.handler.get_queue(0, 0);
+        queue.submit(&[submit_info], Some(self.in_flight_fences[self.frame]));
 
         // presenting queue
         let present_info = VkPresentInfoKHRBuilder::new()
@@ -793,7 +860,7 @@ impl<'a> App<'a> {
             .p_swapchains(&self.presentation.swapchain)
             .p_image_indices(&image_index)
             .build();
-        let result = queue.queue_present_khr(0, &present_info);
+        let result = queue.present_khr(0, &present_info);
 
         let changed =
             result == VkResult::VK_SUBOPTIMAL_KHR || result == VkResult::VK_ERROR_OUT_OF_DATE_KHR;
@@ -810,110 +877,7 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-    fn create_vertex_buffer(&mut self) {
-        let staging_buffer = self
-            .handler
-            .create_buffer(
-                (Some(VERTICES.as_ptr()), VERTICES.len()),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_SHARING_MODE_EXCLUSIVE,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            )
-            .unwrap();
-        staging_buffer.bind_buffer_memory(0);
-        staging_buffer.map_to_gpu_and_unmap();
-
-        // copy
-        let cmd = self
-            .handler
-            .allocate_command_buffers(&QueueType::graphics, 0, 0, 1)[0];
-        vkCmdBlock! {
-            THIS cmd;
-
-            let copy_info = VkBufferCopy {
-                dstOffset: 0,
-                size: staging_buffer.vksize(),
-                srcOffset: 0,
-            };
-
-            COPY_BUFFER(
-                staging_buffer.into_raw_vk(),
-                self.vertex_buffer.into_raw_vk(),
-                1,
-                &copy_info
-            );
-        }
-
-        let submit_info = VkSubmitInfoBuilder::new()
-            .command_buffer_count(1)
-            .p_command_buffers(&cmd)
-            .build();
-
-        let queue = self.handler.device.get_queue(
-            self.handler
-                .queue_family_indices
-                .get(&QueueType::graphics)
-                .unwrap()[0],
-            0,
-        );
-        queue.queue_submit(0, 1, &submit_info, std::ptr::null_mut());
-        queue.queue_wait_idle();
-    }
-
-    fn create_index_buffer(&self) {
-        let staging_buffer = self
-            .handler
-            .create_buffer(
-                (Some(INDICES.as_ptr()), INDICES.len()),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_SHARING_MODE_EXCLUSIVE,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            )
-            .unwrap();
-        staging_buffer.bind_buffer_memory(0);
-        staging_buffer.map_to_gpu_and_unmap();
-
-        // copy
-        let cmd = self
-            .handler
-            .allocate_command_buffers(&QueueType::graphics, 0, 0, 1)[0];
-        vkCmdBlock! {
-            THIS cmd;
-
-            let copy_info = VkBufferCopy {
-                dstOffset: 0,
-                size: staging_buffer.vksize(),
-                srcOffset: 0,
-            };
-
-            COPY_BUFFER(
-                staging_buffer.into_raw_vk(),
-                self.index_buffer.into_raw_vk(),
-                1,
-                &copy_info
-            );
-        }
-
-        let submit_info = VkSubmitInfoBuilder::new()
-            .command_buffer_count(1)
-            .p_command_buffers(&cmd)
-            .build();
-
-        let queue = self.handler.device.get_queue(
-            self.handler
-                .queue_family_indices
-                .get(&QueueType::graphics)
-                .unwrap()[0],
-            0,
-        );
-        queue.queue_submit(0, 1, &submit_info, std::ptr::null_mut());
-        queue.queue_wait_idle();
-    }
-
     fn create_and_update_descriptor_set(&mut self) {
-
-        self.descriptor.allocate_sets(1);
-
         // Update
         let buffer_info = VkDescriptorBufferInfoBuilder::new()
             .buffer(self.uniform_buffer.into_raw_vk())
@@ -922,15 +886,15 @@ impl<'a> App<'a> {
             .build();
 
         let ubo_write = VkWriteDescriptorSetBuilder::new()
-            .dst_set(self.descriptor.sets.as_ref().unwrap()[0])
+            .dst_set(self.resource_binding.descriptor_sets[0])
             .dst_binding(0)
             .dst_array_element(0)
             .descriptor_count(1)
-            .descriptor_type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+            .descriptor_type(VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
             .p_buffer_info(&buffer_info)
             .build();
 
-        self.descriptor.update(&[ubo_write]);
+        self.resource_binding.update(&[ubo_write]);
     }
 
     fn update_uniform_buffers(&mut self) {
@@ -983,17 +947,15 @@ impl<'a> App<'a> {
     }
 
     fn create_command_buffers(&mut self) {
-        let device = &self.handler.device;
-        self.command_buffers = self.handler.allocate_command_buffers(
-            &QueueType::graphics,
+        let command_buffers = self.handler.allocate_command_buffers(
             0,
-            VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            VkCommandBufferLevel(0),
             self.framebuffers.len() as u32,
         );
 
-        self.command_buffers.iter().enumerate().for_each(|(i, cmd)| {
+        command_buffers.iter().enumerate().for_each(|(i, &cmd)| {
             vkCmdBlock! {
-                THIS *cmd;
+                THIS cmd;
 
                 let render_area = VkRect2D { offset: VkOffset2D { x: 0, y: 0 }, extent: self.presentation.extent };
                 let color_clear_value = VkClearValue { color: VkClearColorValue { float32:[0.0, 0.0, 1.0, 0.0] } };
@@ -1007,17 +969,19 @@ impl<'a> App<'a> {
                     .framebuffer(self.framebuffers[i])
                     .build();
 
-                BEGIN_RENDER_PASS(&render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+                BEGIN_RENDER_PASS(&render_pass_begin_info, VkSubpassContents::VK_SUBPASS_CONTENTS_INLINE);
                 BIND_PIPELINE(
-                    VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline
+                    VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline
                 );
-                BIND_DESCRIPTOR_SETS(VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline_layout, 0, 1, &self.descriptor.sets.as_ref().unwrap()[0], 0, &0);
-                BIND_VERTEX_BUFFERS(0, 1, &self.vertex_buffer.into_raw_vk(), (&[0]).as_ptr());
-                BIND_INDEX_BUFFER(self.index_buffer.into_raw_vk(), 0, VK_INDEX_TYPE_UINT16);
+                BIND_DESCRIPTOR_SETS(VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline.pipeline_layout, 0, 1, self.resource_binding.descriptor_sets.as_ptr(), 0, &0);
+                BIND_VERTEX_BUFFERS(0, 1, &self.vertex_and_index[0].0.into_raw_vk(), (&[0]).as_ptr());
+                BIND_INDEX_BUFFER(self.vertex_and_index[0].1.into_raw_vk(), 0, VkIndexType::VK_INDEX_TYPE_UINT16);
                 DRAW_INDEXED(INDICES.len() as u32, 1, 0, 0, 0);
                 END_RENDER_PASS();
             };
         });
+
+        self.command_buffers = command_buffers;
     }
 
     fn create_sync_objects(&mut self) {
@@ -1054,21 +1018,14 @@ impl<'a> App<'a> {
         self.presentation.destroy();
         self.graphics_pipeline.destroy();
 
-        self.presentation = Presentation::new(
-            &device,
-            self.handler
-                .queue_family_indices
-                .get(&QueueType::graphics)
-                .unwrap(),
-            window,
-        );
+        self.presentation = Presentation::new(&device, &[0], window);
         self.graphics_pipeline_properties = GraphicsPipelineProperties::new(&self.presentation);
         self.graphics_pipeline = GraphicsPipeline::new(
             &device,
             &self.presentation,
             &self.graphics_pipeline_properties,
             &self.shader_stages,
-            &self.descriptor.set_layouts.as_ref().unwrap().as_slice()
+            &[self.resource_binding.descriptor_set_layouts],
         );
 
         self.create_framebuffers();
@@ -1124,12 +1081,13 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let handler = VulkanResourceHandler::new(&[(QueueType::graphics, &[1.0])]);
+    let handler = VulkanHandler::new(&[(QueueType::graphics, &[1.0, 1.0])]);
     let mut app = App::new(&handler, &window);
 
     // non static event loop
     let mut destroying = false;
     let mut minimized = false;
+
     let some = event_loop.run_return(move |event, _, control_flow| {
         // *control_flow = ControlFlow::Poll;
         control_flow.set_poll();
