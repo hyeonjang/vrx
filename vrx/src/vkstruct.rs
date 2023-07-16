@@ -1,8 +1,7 @@
-//@@todo more configuration
-// #[cfg_attr(feature = "graphics",)]
+#[cfg(feature = "graphics",)]
 include!("vk_graphics_header.rs");
-// #[cfg_attr(feature = "computes",)]
-// include!("vk_computes_header.rs");
+#[cfg(feature = "computes",)]
+include!("vk_computes_header.rs");
 
 use std::collections::HashMap;
 use std::ffi::*;
@@ -14,7 +13,8 @@ use std::sync::{Mutex, Once};
 
 use phf::phf_map;
 
-pub const VK_COLOR_COMPONENT_ALL_BIT: VkColorComponentFlagBits = (VK_COLOR_COMPONENT_R_BIT
+pub static VK_COLOR_COMPONENT_ALL_BIT: VkColorComponentFlagBits = 
+     (VK_COLOR_COMPONENT_R_BIT
     | VK_COLOR_COMPONENT_B_BIT
     | VK_COLOR_COMPONENT_G_BIT
     | VK_COLOR_COMPONENT_A_BIT);
@@ -276,6 +276,35 @@ impl_builder_for_vk_structure_t!(
         pub queueFamilyIndexCount: u32,
         pub pQueueFamilyIndices: *const u32,
         pub initialLayout: VkImageLayout,
+    }
+);
+
+impl_builder_for_vk_none_structure_t!(
+    pub struct VkImageSubresource {
+        pub aspectMask: VkImageAspectFlags,
+        pub mipLevel: u32,
+        pub arrayLayer: u32,
+    }
+);
+
+impl_builder_for_vk_none_structure_t!(
+    pub struct VkImageSubresourceRange {
+        pub aspectMask: VkImageAspectFlags,
+        pub baseMipLevel: u32,
+        pub levelCount: u32,
+        pub baseArrayLayer: u32,
+        pub layerCount: u32,
+    }
+);
+
+impl_builder_for_vk_none_structure_t!(
+    pub struct VkBufferImageCopy {
+        pub bufferOffset: VkDeviceSize,
+        pub bufferRowLength: u32,
+        pub bufferImageHeight: u32,
+        pub imageSubresource: VkImageSubresourceLayers,
+        pub imageOffset: VkOffset3D,
+        pub imageExtent: VkExtent3D,
     }
 );
 
