@@ -8,6 +8,7 @@ fn main() {
     let vulkan_sdk = env::var("VULKAN_SDK").expect("[vrx] No vulkan enviroment. Please check");
     let vulkan_sdk = Path::new(&vulkan_sdk);
 
+    println!("cargo:rerun-if-changed=build.rs");
     // platform specific options
     // linux
     if cfg!(unix) {
@@ -27,17 +28,17 @@ fn main() {
     }
 
     // check built header
-    if cfg!(feature = "graphics") {
-        let check_graphics = PathBuf::from("./src/vk_graphics_header.rs");
-        if check_graphics.exists() {
-            return;
-        }
-    } else if cfg!(feature = "computes") {
-        let check_computes = PathBuf::from("./src/vk_computes_header.rs");
-        if check_computes.exists() {
-            return;
-        }
-    }
+    // if cfg!(feature = "graphics") {
+    //     let check_graphics = PathBuf::from("./src/vk_graphics_header.rs");
+    //     if check_graphics.exists() {
+    //         return;
+    //     }
+    // } else if cfg!(feature = "computes") {
+    //     let check_computes = PathBuf::from("./src/vk_computes_header.rs");
+    //     if check_computes.exists() {
+    //         return;
+    //     }
+    // }
 
     // bindgen
     let mut bind_builder = bindgen::Builder::default()
@@ -46,7 +47,89 @@ fn main() {
         .derive_default(true)
         .no_default("[^V]*")
         .size_t_is_usize(true)
-        .rustified_enum("VkResult");
+        //
+        // Vulkan C type macro to rust enum
+        //
+        .newtype_enum("VkImageLayout")
+        .newtype_enum("VkResult")
+        .newtype_enum("VkFormat")
+        .newtype_enum("VkImageTiling")
+        .newtype_enum("VkImageType")
+        .newtype_enum("VkPhysicalDeviceType")
+        .newtype_enum("VkQueryType")
+        .newtype_enum("VkSharingMode")
+        .newtype_enum("VkComponentSwizzle")
+        .newtype_enum("VkImageViewType")
+        .newtype_enum("VkBlendFactor")
+        .newtype_enum("VkBlendOp")
+        .newtype_enum("VkCompareOp")
+        .newtype_enum("VkDynamicState")
+        .newtype_enum("VkFrontFace")
+        .newtype_enum("VkVertexInputRate")
+        .newtype_enum("VkPrimitiveTopology")
+        .newtype_enum("VkPolygonMode")
+        .newtype_enum("VkStencilOp")
+        .newtype_enum("VkLogicOp")
+        .newtype_enum("VkBorderColor")
+        .newtype_enum("VkFilter")
+        .newtype_enum("VkSamplerAddressMode")
+        .newtype_enum("VkSamplerMipmapMode")
+        .newtype_enum("VkDescriptorType")
+        .newtype_enum("VkAttachmentLoadOp")
+        .newtype_enum("VkAttachmentStoreOp")
+        .newtype_enum("VkPipelineBindPoint")
+        .newtype_enum("VkCommandBufferLevel")
+        .newtype_enum("VkIndexType")
+        .newtype_enum("VkSubpassContents");
+    //
+    // to interoperate between flag and flagbits
+    // can be invalid according to the official bindgen doc
+    // "should be other method"
+    //
+    // .rustified_enum("VkAccessFlagBits")
+    // .rustified_enum("VkImageAspectBits")
+    // .rustified_enum("VkFormatFeatureBits")
+    // .rustified_enum("VkImageCreateFlagBits")
+    // .rustified_enum("VkSampleCountFlagBits")
+    // .rustified_enum("VkImageUsageFlagBits")
+    // .rustified_enum("VkInstanceCreateFlagBits")
+    // .rustified_enum("VkMemoryHeapFlagBits")
+    // .rustified_enum("VkMemoryPropertyFlagBits")
+    // .rustified_enum("VkQueueFlagBits")
+    // .rustified_enum("VkDeviceQueueCreateFlagBits")
+    // .rustified_enum("VkPipelineStageFlagBits")
+    // .rustified_enum("VkSparseMemoryBindFlagBits")
+    // .rustified_enum("VkSparseImageFormatFlagBits")
+    // .rustified_enum("VkFenceCreateFlagBits")
+    // .rustified_enum("VkEventCreateFlagBits")
+    // .rustified_enum("VkQueryPipelineStatisticFlagBits")
+    // .rustified_enum("VkQueryPoolCreateFlagBits")
+    // .rustified_enum("VkQueryPolCreateFlagBits")
+    // .rustified_enum("VkBufferCreateFlagBits")
+    // .constified_enum("VkBufferUsageFlagBits")
+    // .rustified_enum("VkImageViewCreateFlagBits")
+    // .rustified_enum("VkPipelineCacheCreateFlagBits")
+    // .rustified_enum("VkColorComponentFlagBits")
+    // .rustified_enum("VkPipelineCreateFlagBits")
+    // .rustified_enum("VkPipelineShaderStageCreateFlagBits")
+    // .rustified_enum("VkShaderStageFlagBits")
+    // .rustified_enum("VkCullModeFlagBits")
+    // .rustified_enum("VkPipelineDepthStencilStateCreateFlagBits")
+    // .rustified_enum("VkPipelineColorBlendSateCreateFlagBits")
+    // .rustified_enum("VkPipelineLayoutCreateFlagBits")
+    // .rustified_enum("VkSamplerCreateFlagBits")
+    // .rustified_enum("VkDescriptorPoolCreateFlagBits")
+    // .rustified_enum("VkDescriptorSetLayoutCreateFlagBits")
+    // .rustified_enum("VkAttachmentDescriptionFlagBits")
+    // .rustified_enum("VkDependencyFlagBits")
+    // .rustified_enum("VkFramebufferCreateFlagBits")
+    // .rustified_enum("VkRenderPassCreateFlagBits")
+    // .rustified_enum("VkSubpassDescriptionFlagBits")
+    // .rustified_enum("VkCommandPoolCreateFlagBits")
+    // .rustified_enum("VkCommandBufferUsageFlagBits")
+    // .rustified_enum("VkQueryControlFlagBits")
+    // .rustified_enum("VkCommandBufferResetFlagBits")
+    // .rustified_enum("VkStencilFaceFlagBits");
 
     if cfg!(windows) {
         if cfg!(feature = "graphics") {
@@ -63,6 +146,8 @@ fn main() {
                 .blocklist_type("_?L?P?CONTEXT")
                 .blocklist_type("_?L?P?EXCEPTION_POINTERS")
                 .blocklist_type("_?P?DISPATCHER_CONTEXT")
+                .blocklist_type("_?L?DISPATCHER_CONTEXT_ARM64")
+                .blocklist_type("_?P?DISPATCHER_CONTEXT_ARM64")
                 .blocklist_type("_?P?EXCEPTION_REGISTRATION_RECORD")
                 .blocklist_type("_?P?IMAGE_TLS_DIRECTORY.*")
                 .blocklist_type("_?P?NT_TIB")
