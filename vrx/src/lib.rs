@@ -8,6 +8,8 @@ use std::any::{type_name, Any};
 include!("vkstruct.rs");
 include!("vktraits.rs");
 
+pub mod memory;
+
 pub fn vk_assert(result: VkResult) {
     assert!(result == VkResult::VK_SUCCESS, "VkResult: {:?}", result);
 }
@@ -30,7 +32,6 @@ macro_rules! load_spv {
 
 #[macro_export]
 macro_rules! vk_instantiate {
-
     ( $x:ident ) => {{
         paste::paste! {
             let mut type_T = [<$x _T>]::default();
@@ -276,14 +277,10 @@ macro_rules! vkMakeBind {
     () => {};
 }
 
-pub use vk_instantiate;
 pub use vkCmdBlock;
 pub use vkMakeBind;
-
+    pub use vk_instantiate;
 } // the end of module
-
-pub mod memory;
-pub use memory::*;
 
 //
 // higher-level wrapper
@@ -494,7 +491,7 @@ impl Context {
         }
 
         let surface_format_dummy = VkSurfaceFormatKHR {
-            format: 0,
+            format: VkFormat::VK_FORMAT_UNDEFINED,
             colorSpace: 0,
         };
         let mut surface_formats_khr: Vec<VkSurfaceFormatKHR> =
@@ -629,12 +626,6 @@ pub fn vulkan_context() -> &'static Context {
 /// High-level wrapping trait for Custom VkStructure
 ///
 ///
-#[derive(Eq, Hash, PartialEq, Copy, Clone, PartialOrd, Ord, Debug)]
-pub enum QueueType {
-    graphics,
-    computes,
-    transfer,
-}
 
 // same as vulkanalia
 #[derive(Clone, Debug)]
@@ -679,15 +670,25 @@ impl SwapchainSupport {
     }
 }
 
-
-#[derive(Debug)]
-pub struct VulkanResourceHandler {
-    pub device: VkDevice,
-    pub queue_family_indices: HashMap<QueueType, Vec<u32>>, // Vec<u32> map to command pools
-    pub command_pools: Vec<VkCommandPool>,                  // command pools per queue family indices
+#[derive(Eq, Hash, PartialEq, Copy, Clone, PartialOrd, Ord, Debug)]
+pub enum QueueType {
+    graphics,
+    computes,
+    transfer,
+    none,
 }
 
-impl VulkanResourceHandler {
+#[derive(Debug)]
+pub struct VulkanHandler {
+    pub device: VkDevice,
+    pub queues: HashMap<(u32, u32), VkQueue>,
+
+    // all sorted by queue familly indices
+    command_pools: Vec<VkCommandPool>, // command pools per queue family indices
+    queue_types: Vec<QueueType>,       // Vec<u32> map to command pools
+}
+
+impl VulkanHandler {
     // pub fn new(demands: Vec<(QueueType, u32)>) -> Self {
     pub fn new(demands: &[(QueueType, &[f32])]) -> Self {
         let ctx = vulkan_context();
@@ -697,6 +698,7 @@ impl VulkanResourceHandler {
                 QueueType::graphics => VK_QUEUE_GRAPHICS_BIT,
                 QueueType::computes => VK_QUEUE_COMPUTE_BIT,
                 QueueType::transfer => VK_QUEUE_TRANSFER_BIT,
+                QueueType::none => 0,
             }
         };
 
