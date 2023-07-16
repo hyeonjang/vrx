@@ -21,32 +21,32 @@ pub const fn make_version(major: u32, minor: u32, patch: u32) -> u32 {
 #[macro_use]
 pub mod func_static {
 
-use paste::paste;
+    use paste::paste;
 
-#[macro_export]
-macro_rules! load_spv {
-    ( $x:tt ) => {{
-        include_bytes!(x)
-    }};
-}
+    #[macro_export]
+    macro_rules! load_spv {
+        ( $x:tt ) => {{
+            include_bytes!(x)
+        }};
+    }
 
-#[macro_export]
-macro_rules! vk_instantiate {
-    ( $x:ident ) => {{
-        paste::paste! {
-            let mut type_T = [<$x _T>]::default();
-            let mut type_inst : *mut [<$x _T>] = &mut type_T;
-        }
+    #[macro_export]
+    macro_rules! vk_instantiate {
+        ( $x:ident ) => {{
+            paste::paste! {
+                let mut type_T = [<$x _T>]::default();
+                let mut type_inst : *mut [<$x _T>] = &mut type_T;
+            }
 
-        type_inst
-    }};
-}
+            type_inst
+        }};
+    }
 
-///
-/// vulkan command block roles
-///
-#[macro_export]
-macro_rules! vkCmdBlock {
+    ///
+    /// vulkan command block roles
+    ///
+    #[macro_export]
+    macro_rules! vkCmdBlock {
 
     //
     // Parse the Vulkan Commands: the top (starting point) of parser
@@ -272,13 +272,13 @@ macro_rules! vkCmdBlock {
     };
 }
 
-#[macro_export]
-macro_rules! vkMakeBind {
-    () => {};
-}
+    #[macro_export]
+    macro_rules! vkMakeBind {
+        () => {};
+    }
 
-pub use vkCmdBlock;
-pub use vkMakeBind;
+    pub use vkCmdBlock;
+    pub use vkMakeBind;
     pub use vk_instantiate;
 } // the end of module
 
@@ -706,59 +706,44 @@ impl VulkanHandler {
         demands
             .to_vec()
             .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-        let mut queue_family_indices: HashMap<QueueType, Vec<u32>> = HashMap::new();
-        let mut device_queue_create_infos: Vec<VkDeviceQueueCreateInfo> = Vec::new();
 
         // 1.
-        let find_queue_family = |flag: VkQueueFlagBits| -> Vec<u32> {
-            let index_collected: Vec<u32> = ctx
-                .get_physical_device_queue_familly_properties()
+        let mut queue_family_properties = ctx.get_physical_device_queue_familly_properties();
+        let queue_family_len = queue_family_properties.len();
+        let mut possible_queue_family_indices: Vec<u32> = (0..queue_family_len as u32).collect();
+
+        let mut find_queue_family_index = |queue_type: QueueType| -> u32 {
+            let queue_flag = queue_type_map(queue_type);
+            let qfi = queue_family_properties
                 .iter()
-                .enumerate()
-                .filter(|(_i, x)| (x.queueFlags & (flag as u32)) != 0)
-                .map(|(i, _x)| i as u32)
-                .collect();
-            index_collected
+                .position(|&x| (x.queueFlags & (queue_flag as VkQueueFlags)) != 0)
+                .unwrap();
+            queue_family_properties.remove(qfi);
+            possible_queue_family_indices.remove(qfi)
         };
 
-        // 2. initialize queue family index
-        demands.iter().for_each(|demand| {
-            queue_family_indices.insert(demand.0, vec![]);
-        });
+        // device and queue
+        let mut queue_types: Vec<QueueType> = vec![QueueType::none; queue_family_len];
 
-        // 3. resource (indices) allocation
-        let mut tot_indices: Vec<u32> = vec![0, 1, 2, 3, 4, 5];
-        let mut process_queue_family = |queue_type: QueueType, queue_priorities: &[f32]| {
-            let q_inds = find_queue_family(queue_type_map(queue_type));
-            let mut index = 0;
-            for i in q_inds {
-                for (j, ind) in tot_indices.iter().enumerate() {
-                    if i == *ind {
-                        index = tot_indices.remove(j);
-                        break;
-                    }
-                }
-            }
-            let mut queue_type_indices = queue_family_indices.get_mut(&queue_type).unwrap();
-            queue_type_indices.push(index);
-
-            let device_queue_create_info = VkDeviceQueueCreateInfoBuilder::new()
-                .queue_family_index(index as u32)
-                .queue_count(queue_priorities.len() as u32)
-                .p_queue_priorities(queue_priorities.as_ptr())
-                .build();
-            device_queue_create_infos.push(device_queue_create_info);
-        };
-
-        // 3. real execute
-        demands
+        let device_queue_create_infos: Vec<VkDeviceQueueCreateInfo> = demands
             .iter()
-            .for_each(|demand| process_queue_family(demand.0, demand.1));
+            .map(|demand| {
+                let qfi = find_queue_family_index(demand.0);
 
-        // device
+                // store queue type
+                queue_types[qfi as usize] = demand.0;
+
+                // real execution
+                VkDeviceQueueCreateInfoBuilder::new()
+                    .queue_family_index(qfi)
+                    .queue_count(demand.1.len() as u32)
+                    .p_queue_priorities(demand.1.as_ptr())
+                    .build()
+            })
+            .collect();
+
         let vk_khr_swapchain = b"VK_KHR_swapchain\0".as_ptr() as *const i8;
         let extensions = [vk_khr_swapchain];
-        let mut device = vk_instantiate!(VkDevice);
         let device_create_info = VkDeviceCreateInfoBuilder::new()
             .queue_create_info_count(device_queue_create_infos.len() as u32)
             .p_queue_create_infos(device_queue_create_infos.as_ptr())
@@ -766,27 +751,33 @@ impl VulkanHandler {
             .pp_enabled_extension_names(extensions.as_ptr())
             .build();
 
-        device = ctx.physical_devices[0].create_device(&device_create_info, None);
-
-        let mut command_pools: Vec<VkCommandPool> = vec![vk_instantiate!(VkCommandPool); 5];
-        for (queue_family, indices) in &queue_family_indices {
-            indices.iter().for_each(|i| {
-                let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
-                    .queue_family_index(*i)
-                    .build();
-                command_pools[*i as usize] =
-                    device.create_command_pool(&command_pool_create_info, None);
-            })
-        }
+        let device = ctx.physical_devices[0].create_device(&device_create_info, None);
+        let mut queues = HashMap::new();
+        device_queue_create_infos.iter().for_each(|info| {
+            let qfi = info.queueFamilyIndex;
+            for i in 0..info.queueCount {
+                queues.insert((qfi, i), device.get_queue(qfi, i));
+            }
+        });
 
         // command pool
-        let mut new_device = Self {
-            device: device,
-            queue_family_indices: queue_family_indices,
-            command_pools: command_pools,
-        };
+        let command_pools: Vec<VkCommandPool> = device_queue_create_infos
+            .iter()
+            .map(|info| {
+                let command_pool_create_info = VkCommandPoolCreateInfoBuilder::new()
+                    .queue_family_index(info.queueFamilyIndex)
+                    .build();
+                device.create_command_pool(&command_pool_create_info, None)
+            })
+            .collect();
 
-        new_device
+        // command pool
+        Self {
+            device,
+            command_pools,
+            queues,
+            queue_types,
+        }
     }
 
     pub fn destroy(&mut self) {
@@ -799,20 +790,29 @@ impl VulkanHandler {
     }
 
     //
-    pub fn get_command_pool(&self, queue_type: &QueueType, index: usize) -> VkCommandPool {
-        self.command_pools[self.queue_family_indices.get(queue_type).unwrap()[index] as usize]
+    pub fn get_command_pool(&self, index: usize) -> VkCommandPool {
+        self.command_pools[index]
+    }
+
+    // currently ok
+    pub fn get_queue_familly_indices(&self, queue_type: &QueueType) -> Vec<u32> {
+        self.queue_types
+            .iter()
+            .enumerate()
+            .filter(|(_, type_)| matches!(type_, queue_type))
+            .map(|(i, _)| i as u32)
+            .collect()
     }
 
     //
     // command buffer
     pub fn allocate_command_buffers(
         &self,
-        queue_type: &QueueType,
         index: usize,
         level: VkCommandBufferLevel,
         count: u32,
     ) -> Vec<VkCommandBuffer> {
-        let command_pool = self.get_command_pool(queue_type, index);
+        let command_pool = self.get_command_pool(index);
 
         let info = VkCommandBufferAllocateInfoBuilder::new()
             .command_pool(command_pool)
@@ -839,12 +839,24 @@ impl VulkanHandler {
         }
     }
 
+    // queues
+    pub fn get_queue(&self, queue_family_index: u32, index: u32) -> &VkQueue {
+        self.queues.get(&(queue_family_index, index)).unwrap()
+    }
+
+    // pub fn queue_wait_idle() {
+
+    // };
+
     //
     // high level api
     //
     // descriptor
-    pub fn create_descriptor(&self, descriptor_pool_sizes: &[VkDescriptorPoolSize]) -> anyhow::Result<Descriptor> {
-        Ok(Descriptor::new(descriptor_pool_sizes, &self.device))
+    pub fn create_resource_binding(
+        &self,
+        bindings: &[VkDescriptorSetLayoutBinding],
+    ) -> memory::ResourceBinding {
+        memory::ResourceBinding::new(bindings, &self.device)
     }
 
     // buffer
@@ -854,33 +866,77 @@ impl VulkanHandler {
         usage: VkBufferUsageFlagBits,
         flags: VkBufferCreateFlagBits,
         mem_prop_flags: VkMemoryPropertyFlagBits,
-    ) -> anyhow::Result<Buffer<T>> {
-        Ok(Buffer::<T>::new(
+    ) -> anyhow::Result<memory::Buffer<T>> {
+        Ok(memory::Buffer::<T>::new(
             data,
-            flags as VkBufferCreateFlags,
-            usage as VkBufferUsageFlags,
-            mem_prop_flags as VkMemoryPropertyFlags,
+            flags,
+            usage,
+            mem_prop_flags,
             &self.device,
         ))
     }
 
-    pub fn create_staging_buffer(
-
-    ) {
-
+    pub fn create_transfer_src_buffer<T>(
+        &self,
+        ptr: *const T,
+        len: usize,
+    ) -> anyhow::Result<memory::Buffer<T>> {
+        self.create_buffer(
+            (Some(ptr), len),
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            0,
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        )
     }
 
-    // Textures
-    // raw texture
-    // pub fn create_texture<'a>(
-    //     &'a self,
-    //     mem_prop_info: VkMemoryPropertyFlagBits,
-    // ) -> anyhow::Result<Texture> {
-    //     Ok(Texture::new(mem_prop_info, &self.device))
-    // }
+    pub fn create_transfer_dst_buffer<T>(
+        &self,
+        len: usize,
+        usage: VkBufferUsageFlagBits,
+    ) -> anyhow::Result<memory::Buffer<T>> {
+        self.create_buffer(
+            (Some(std::ptr::null::<T>()), len),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage,
+            0,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        )
+    }
 
-    // texture 2D
-    // pub fn create_texture2D<'a>() -> Result<Texture> {
+    // textures
+    pub fn texture_builder<'a, T, const dim: usize>(
+        &'a self,
+        data: (Option<*const T>, [u32; dim]),
+        mem_prop_flags: VkMemoryPropertyFlagBits,
+    ) -> memory::TextureBuilder<'a, T, dim> {
+        memory::TextureBuilder::new(data, &self.device)
+    }
 
-    // }
-} 
+    pub fn texture_builder_from_path<'a>(
+        &'a self,
+        path: &'static str,
+    ) -> memory::TextureBuilder<'a, u8, 2> {
+        memory::texture_builder_from_path(path, &self.device)
+    }
+}
+
+pub mod util {
+
+    use crate::*;
+
+    pub fn submit_info(
+        wait_semaphores: &[VkSemaphore],
+        wait_dst_stage_mask: &[VkPipelineStageFlags],
+        command_buffers: &[VkCommandBuffer],
+        signal_semaphores: &[VkSemaphore],
+    ) -> VkSubmitInfo {
+        VkSubmitInfoBuilder::new()
+            .wait_semaphore_count(wait_semaphores.len() as u32)
+            .p_wait_semaphores(wait_semaphores.as_ptr())
+            .p_wait_dst_stage_mask(wait_dst_stage_mask.as_ptr())
+            .command_buffer_count(command_buffers.len() as u32)
+            .p_command_buffers(command_buffers.as_ptr())
+            .signal_semaphore_count(signal_semaphores.len() as u32)
+            .p_signal_semaphores(signal_semaphores.as_ptr())
+            .build()
+    }
+}
