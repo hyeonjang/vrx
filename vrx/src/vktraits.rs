@@ -131,7 +131,6 @@ macro_rules! destroy_func {
 pub trait VkPhysicalDeviceFunctions {
     // pub fn getFeatures(&self) -> *mut VkPhyiscalDeviceFeatures;
     // pub fn getFormatProperties(&self, format: VkFormat) -> *mut VkFormatProperties;
-
     // 
     fn create_device(&self, create_info: *const VkDeviceCreateInfo, p_allocator: Option<*const VkAllocationCallbacks>) -> VkDevice;
 }
@@ -606,37 +605,37 @@ impl VkDeviceFunctions for VkDevice {
 }
 
 pub trait VkQueueFunctions {
-    fn queue_submit(
+    fn submit(
         &self,
-        index: usize,
-        info_count: u32,
-        infos: *const VkSubmitInfo,
-        fence: VkFence,
+        infos: &[VkSubmitInfo],
+        fence: Option<VkFence>,
     );
-    fn queue_wait_idle(&self);
-    fn queue_present_khr(&self, index: usize, present_info: &VkPresentInfoKHR) -> VkResult;
+    fn wait_idle(&self);
+    fn present_khr(&self, index: usize, present_info: &VkPresentInfoKHR) -> VkResult;
 }
 
 impl VkQueueFunctions for VkQueue {
-    fn queue_submit(
+    fn submit(
         &self,
-        index: usize,
-        info_count: u32,
-        infos: *const VkSubmitInfo,
-        fence: VkFence,
+        infos: &[VkSubmitInfo],
+        opt_fence: Option<VkFence>,
     ) {
         unsafe {
-            vk_assert(vkQueueSubmit(*self, info_count, infos, fence));
+        if let Some(fence) = opt_fence {
+            vk_assert(vkQueueSubmit(*self, infos.len() as u32, infos.as_ptr(), fence));
+        } else {
+            vk_assert(vkQueueSubmit(*self, infos.len() as u32, infos.as_ptr(), std::ptr::null_mut()));
+        }
         }
     }
 
-    fn queue_wait_idle(&self) {
+    fn wait_idle(&self) {
         unsafe {
             vkQueueWaitIdle(*self);
         }
     }
 
-    fn queue_present_khr(&self, index: usize, present_info: &VkPresentInfoKHR) -> VkResult {
+    fn present_khr(&self, index: usize, present_info: &VkPresentInfoKHR) -> VkResult {
         let mut result = VkResult::VK_SUCCESS;
         unsafe { result = vkQueuePresentKHR(*self, present_info) }
         result
