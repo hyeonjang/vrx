@@ -14,4 +14,5 @@ anyhow = "1.0"
 nalgebra = "*"
 nalgebra-glm = "*"
 lazy_static = "*"
+png = "*"
 
