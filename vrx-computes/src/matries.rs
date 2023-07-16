@@ -9,24 +9,32 @@ use vrx::*;
 #[derive(Debug, Clone, Copy)]
 pub struct Matrix<T, const R: usize, const C: usize> {
     values: [[T; R]; C],
+    pub shape: [u32; 2],
 }
 
-impl<T, const R: usize, const C: usize> Matrix<T, R, C> {
-    pub fn new(arrays: [[T; R]; C]) -> Self {
-        Matrix { values: arrays }
+impl<T, const R: usize, const C: usize> Matrix<T, R, C>
+where
+    T: Default + std::marker::Copy,
+{
+    pub fn new(values: [[T; R]; C]) -> Self {
+        let shape = [R as u32, C as u32];
+        Matrix { values, shape }
+    }
+
+    pub fn with_shape() -> Self {
+        Matrix {
+            values: [[T::default(); R]; C],
+            shape: [R as u32, C as u32],
+        }
     }
 
     pub fn len(&self) -> usize {
         R * C
     }
 
-    pub fn shape(&self) -> (usize, usize) {
-        (R, C)
+    pub fn as_ptr(&self) -> *const T {
+        self.values[0].as_ptr()
     }
-}
-
-pub struct DynamicMatrix<T> {
-    values: Vec<T>,
 }
 
 impl<T, const R: usize, const C: usize> Index<(usize, usize)> for Matrix<T, R, C> {
@@ -35,6 +43,10 @@ impl<T, const R: usize, const C: usize> Index<(usize, usize)> for Matrix<T, R, C
     fn index(&self, index: (usize, usize)) -> &Self::Output {
         &self.values[index.0][index.1]
     }
+}
+
+pub struct DynamicMatrix<T> {
+    values: Vec<T>,
 }
 
 pub trait MatrixSolver {}
@@ -61,6 +73,7 @@ const COMP_SPV: &[u8] = include_bytes!("./shader/cholesky.spv");
 pub trait Factorizor {
     // fn LU(&self);
     fn cholesky(&self);
+    fn cholesky_texture(&self);
 }
 
 impl<T, const R: usize, const C: usize> Factorizor for Matrix<T, R, C>
@@ -77,7 +90,27 @@ where
             self.len() as u32,
         );
 
+        let in_tex_builder = handler.texture_builder(
+            (Some(self.as_ptr()), [self.shape[0], self.shape[1]]),
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        );
+
+        let in_tex = in_tex_builder
+            .usage(VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+            .format(VkFormat::VK_FORMAT_R32_SFLOAT)
+            .samples(VK_SAMPLE_COUNT_1_BIT)
+            .build();
+
+        let command_pool = handler.get_command_pool(&QueueType::computes, 0);
+        in_tex.cmd_copy_buffer_to_image(command_pool);
+
         let mut out_values = [[T::default(); R]; C];
+        let m = Matrix::<f32, R, C>::with_shape();
+        let texture = handler.texture_builder(
+            (Some(m.as_ptr()), [m.shape[0], m.shape[1]]),
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        );
+
         let shape = (out_values.len() as u32, out_values[0].len() as u32);
         let len = shape.0 * shape.1;
         let mut out_buffer = handler
@@ -87,56 +120,11 @@ where
                     | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
                     | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 0,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             )
             .unwrap();
-        out_buffer.bind_buffer_memory(0);
+        // out_buffer.bind_buffer_memory(0);
         out_buffer.map_to_gpu_and_unmap();
-
-        let image_create_info = VkImageCreateInfoBuilder::new()
-            .image_type(VK_IMAGE_TYPE_2D)
-            .extent(VkExtent3D {
-                width: shape.0 as u32,
-                height: shape.1 as u32,
-                depth: 1,
-            })
-            .mip_levels(1)
-            .array_layers(1)
-            .format(VK_FORMAT_R32_SFLOAT)
-            .tiling(VK_IMAGE_TILING_OPTIMAL)
-            .initial_layout(VK_IMAGE_LAYOUT_UNDEFINED)
-            .usage((VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT) as u32)
-            .samples(VK_SAMPLE_COUNT_1_BIT)
-            .sharing_mode(VK_SHARING_MODE_EXCLUSIVE)
-            .build();
-
-        // let out_image = handler
-        //     .create_texture(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-        //     .unwrap();
-
-        // let cmd = device
-        //     .allocate_command_buffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
-        //     .unwrap();
-        // vkCmdBlock! {
-        //     THIS cmd;
-
-        //     let copy = VkBufferImageCopy {
-        //         bufferOffset: 0,
-        //         bufferRowLength: 0,
-        //         bufferImageHeight: 0,
-        //         imageSubresource: VkImageSubresourceLayers { aspectMask:VK_IMAGE_ASPECT_COLOR_BIT as u32, mipLevel:0, baseArrayLayer:0, layerCount:1 },
-        //         imageOffset: VkOffset3D { x: 0, y: 0, z: 0 },
-        //         imageExtent: VkExtent3D { width: shape.0, height: shape.1, depth: 1 },
-        //     };
-
-        //     COPY_BUFFER_TO_IMAGE(
-        //         *out_buffer.buffer(),
-        //         *out_image.image(),
-        //         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        //         1,
-        //         &copy
-        //     );
-        // };
 
         let spec0 = VkSpecializationMapEntry {
             constantID: 0,
@@ -194,14 +182,14 @@ where
         let layout_bindings = &[
             VkDescriptorSetLayoutBinding {
                 binding: 0,
-                descriptorType: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                descriptorType: VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 descriptorCount: 1,
                 stageFlags: VK_SHADER_STAGE_COMPUTE_BIT as u32,
                 pImmutableSamplers: null(),
             },
             VkDescriptorSetLayoutBinding {
                 binding: 1,
-                descriptorType: VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                descriptorType: VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                 descriptorCount: 1,
                 stageFlags: VK_SHADER_STAGE_COMPUTE_BIT as u32,
                 pImmutableSamplers: null(),
@@ -210,11 +198,11 @@ where
 
         let pool_sizes = vec![
             VkDescriptorPoolSize {
-                type_: VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                type_: VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 descriptorCount: 1,
             },
             VkDescriptorPoolSize {
-                type_: VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                type_: VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                 descriptorCount: 1,
             },
         ];
@@ -231,7 +219,7 @@ where
             .binding_count(layout_bindings.len() as u32)
             .p_bindings(layout_bindings.as_ptr())
             .build();
-        
+
         descriptor.create_set_layouts(&[desc_set_layout_create_info]);
         descriptor.allocate_sets(1);
         let descriptor_sets = descriptor.sets.as_ref().unwrap();
@@ -240,7 +228,7 @@ where
             VkWriteDescriptorSetBuilder::new()
                 .dst_set(descriptor_sets[0])
                 .dst_binding(0)
-                .descriptor_type(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+                .descriptor_type(VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
                 .descriptor_count(1)
                 .p_buffer_info(&buffer_descriptor)
                 .build(),
@@ -296,14 +284,14 @@ where
         let cmd = handler.allocate_command_buffers(
             &QueueType::computes,
             0,
-            VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             1,
         )[0];
         vkCmdBlock! {
             THIS cmd;
 
             BIND_PIPELINE(
-                VK_PIPELINE_BIND_POINT_COMPUTE,
+                VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE,
                 pipeline
             );
 
@@ -316,7 +304,7 @@ where
             );
 
             BIND_DESCRIPTOR_SETS(
-                VK_PIPELINE_BIND_POINT_COMPUTE,
+                VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE,
                 pipeline_layout,
                 0, 1,
                 descriptor_sets.as_ptr(),
@@ -380,6 +368,52 @@ where
         out_buffer.unmap_memory();
         let mapped = out_buffer.map_to_cpu_and_unmap();
         println!("{:?}", mapped);
+    }
+
+    fn cholesky_texture(&self) {
+        let handler = VulkanResourceHandler::new(&[(QueueType::computes, &[1.0])]);
+        let device = &handler.device;
+        let command_pool = handler.get_command_pool(&QueueType::computes, 0);
+
+        let in_tex_builder = handler.texture_builder(
+            (Some(self.as_ptr()), [self.shape[0], self.shape[1]]),
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        );
+
+        let in_tex = in_tex_builder
+            .usage(VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+            .format(VkFormat::VK_FORMAT_R32_SFLOAT)
+            .samples(VK_SAMPLE_COUNT_1_BIT)
+            .build();
+
+        in_tex.cmd_copy_buffer_to_image(command_pool);
+
+        let m_out = Matrix::<f32, R, C>::with_shape();
+        let out_tex_builder = handler.texture_builder(
+            (Some(m_out.as_ptr()), [m_out.shape[0], m_out.shape[1]]),
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        );
+
+        let out_tex = out_tex_builder
+            .usage(VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+            .format(VkFormat::VK_FORMAT_R32_SFLOAT)
+            .samples(VK_SAMPLE_COUNT_1_BIT)
+            .build();
+
+        let bindings = memory::descriptor::set_layout_bindings([
+            (
+                0,
+                VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                1,
+                VK_SHADER_STAGE_COMPUTE_BIT,
+            ),
+            (
+                1,
+                VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                1,
+                VK_SHADER_STAGE_COMPUTE_BIT,
+            ),
+        ]);
     }
 }
 
