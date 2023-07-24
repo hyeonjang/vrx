@@ -11,6 +11,7 @@ libc = "0.2.0"
 anyhow = "1.0"
 phf = { version = "0.11.1", features=["macros"] }
 shader = { path = "./shader" }
+png = "*"
 
 [build-dependencies]
 bindgen = "0.60.0"
