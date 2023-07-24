@@ -587,6 +587,8 @@ lazy_static! {
     ];
 }
 
+use shader::descriptor;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct UniformBufferObject {
@@ -595,10 +597,10 @@ pub struct UniformBufferObject {
     proj: glm::Mat4,
 }
 
-pub struct TempObject(u32, u32);
+impl PossibleDescriptor for UniformBufferObject {}
 
-impl DescriptorFunctions for UniformBufferObject {}
-impl DescriptorFunctions for TempObject {}
+#[descriptor]
+pub struct TempObject {}
 
 struct App<'a> {
     start: std::time::Instant,

@@ -129,7 +129,9 @@ pub struct DescriptorBuffer<'a> {
     buffer: Buffer<'a, std::ffi::c_void>,
 }
 
-impl<'a, T> DescriptorFunctions for Buffer<'a, T> {
+pub trait PossibleDescriptor {}
+
+impl<'a, T: PossibleDescriptor> DescriptorFunctions for Buffer<'a, T> {
     // fn get_descriptor_set_layout_binding(&self) -> VkDescriptorSetLayoutBinding {
 
     //     VkDescriptorSetLayoutBindingBuilder::new()
