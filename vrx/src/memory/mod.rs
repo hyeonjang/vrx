@@ -166,8 +166,3 @@ pub enum Texture<'a, T> {
 // pub enum Descriptor<'a> {
 
 // }
-
-pub trait DescriptorFunctions {
-    // fn get_descriptor_set_layout_binding(&self) -> VkDescriptorSetLayoutBinding;
-    // fn get_write_descriptor_set(&self) -> VkWriteDescriptorSet;
-}

@@ -124,14 +124,33 @@ impl<'a, T> Buffer<'a, T> {
     }
 }
 
-pub struct DescriptorBuffer<'a> {
-    id: u32,
-    buffer: Buffer<'a, std::ffi::c_void>,
+pub trait DescriptorStruct {
+    fn get_type(&self) -> VkDescriptorType;
+    fn get_set(&self) -> u32;
+    fn get_binding(&self) -> u32;
 }
 
-pub trait PossibleDescriptor {}
+pub trait DescriptorTrait {
+    fn layout_binding(&self) -> VkDescriptorSetLayoutBinding;
+}
 
-impl<'a, T: PossibleDescriptor> DescriptorFunctions for Buffer<'a, T> {
+impl<'a, T: DescriptorStruct> DescriptorTrait for Buffer<'a, T> {
+    fn layout_binding(&self) -> VkDescriptorSetLayoutBinding {
+        
+        let generic_instance = unsafe { &*self.cpu.as_ptr() };
+        
+        VkDescriptorSetLayoutBindingBuilder::new()
+            .binding(unsafe { T::get_binding(generic_instance) })
+            .descriptor_type(unsafe { T::get_type(generic_instance) })
+            // .descriptor_count()
+            // .stage_flags()
+            .build()
+    }
+
+    // fn set_layout_binding(&self) -> VkDescriptorSetLayoutBinding {
+
+    // }
+
     // fn get_descriptor_set_layout_binding(&self) -> VkDescriptorSetLayoutBinding {
 
     //     VkDescriptorSetLayoutBindingBuilder::new()
@@ -146,3 +165,5 @@ impl<'a, T: PossibleDescriptor> DescriptorFunctions for Buffer<'a, T> {
     //     VkWriteDescriptorSetBuilder::new().build()
     // }
 }
+
+pub type Descriptor<'a> = Box<dyn DescriptorTrait + 'a>;

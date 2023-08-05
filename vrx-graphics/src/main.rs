@@ -587,19 +587,19 @@ lazy_static! {
     ];
 }
 
-use shader::descriptor;
+// use shader::descriptor;
+use shader;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
+#[shader::uniform_buffer(set = 0, binding = 0)]
 pub struct UniformBufferObject {
     model: glm::Mat4,
     view: glm::Mat4,
     proj: glm::Mat4,
 }
 
-impl PossibleDescriptor for UniformBufferObject {}
-
-#[descriptor]
+#[shader::uniform_buffer(set = 0, binding = 0)]
 pub struct TempObject {}
 
 struct App<'a> {
@@ -620,7 +620,7 @@ struct App<'a> {
 
     resource_binding: ResourceBinding<'a>,
     uniform_buffer: Buffer<'a, UniformBufferObject>,
-    descriptors: Vec<Box<dyn DescriptorFunctions>>,
+    descriptors: Vec<Descriptor<'a>>,
     vertex_and_index: Vec<(Buffer<'a, Vertex>, Buffer<'a, u16>)>,
 
     handler: &'a VulkanHandler,
@@ -679,8 +679,8 @@ impl<'a> App<'a> {
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
             )
             .unwrap();
-            
-        let mut desc: Vec<Box<dyn DescriptorFunctions>> = vec![];
+
+        let mut desc: Vec<Descriptor> = vec![];
         desc.push(Box::new(object0));
         desc.push(Box::new(object1));
 
