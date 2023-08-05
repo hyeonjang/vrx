@@ -970,6 +970,7 @@ dependencies = [
 name = "shader"
 version = "0.1.0"
 dependencies = [
+ "paste",
  "quote",
  "syn 2.0.15",
 ]
